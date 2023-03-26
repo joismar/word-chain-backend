@@ -1,4 +1,4 @@
-# Word Chain - GDD
+# Word Chain
 
 ## 📒 Sobre o Jogo
 Word Chain é um game com uma jogabilidade simples e divertida, no estilo [Gartic.IO](https://gartic.io/), onde os jogadores vão disputar online a sua capacidade de fazer correntes de palavras, o mais rápido possível, sem repetir. 
