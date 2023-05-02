@@ -7,11 +7,12 @@ class PlayerCondition(int, Enum):
   READY = 1
 
 class Player:
-  def __init__(self, name, id=None, score=0, condition=PlayerCondition.WAITING):
-    self.id: str = id or str(uuid.uuid4())
+  def __init__(self, name, _id=None, score=0, condition=PlayerCondition.WAITING):
+    self.id: str = _id or str(uuid.uuid4())
     self.name: str = name
     self.score: int = score
     self.condition: PlayerCondition = condition
+    self.last_word_time: float
 
   def give_score(self, score):
     self.score += score

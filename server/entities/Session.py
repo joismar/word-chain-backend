@@ -8,14 +8,18 @@ class GameStatus(int, Enum):
   STARTED = 1
 
 class Session:
-  def __init__(self, name, id=None, players=[], turn_index=0, chain=None, status=GameStatus.CREATED):
-    self.id: str = id or str(uuid.uuid4())
+  def __init__(self, name, _id=None, players=None, turn_index=0, chain=None, status=GameStatus.CREATED):
+    if players is None: players = []
+    if chain is None: chain = []
+
+    self.id: str = _id or str(uuid.uuid4())
     self.name: str = name
     self.players: list[Player] = players
     self.turn_index: int = turn_index
     self.chain: list[str] = chain
     self.status: GameStatus = status
 
+  @property
   def turn_player(self):
     return self.players[self.turn_index]
 
@@ -27,7 +31,7 @@ class Session:
 
   def to_dict(self):
     old_players = self.players
-    self.players = list(map(lambda x: x.to_dict(), self.players))
+    self.players = [x.to_dict() for x in self.players]
     new_dict = self.__dict__.copy()
     self.players = old_players
     return new_dict
