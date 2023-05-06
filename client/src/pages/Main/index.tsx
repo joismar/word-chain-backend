@@ -1,25 +1,29 @@
 import React from 'react';
-import './style.css';
+// import './style.css';
 import { ChatContainer, Container, Main, ChatFooter, ChatBox } from './style';
 import TitleBox from '../../components/Title';
 import CustomButton from '../../components/CustomButton';
+import Modal from '../../components/Modal';
 
 function App() {
   return (
+    <>
+    <Modal/>
     <Main>
       <Container>
         <TitleBox title={"INICIO"}/>
         <ChatContainer>
           <ChatBox>
-
           </ChatBox>
           <ChatFooter>
-            <CustomButton>foda-se</CustomButton>
-            <CustomButton>picles</CustomButton>
+            <CustomButton>entrar</CustomButton>
+            <CustomButton>criar</CustomButton>
           </ChatFooter>
         </ChatContainer>
       </Container>
     </Main>
+    </>
+    
   );
 }
 
