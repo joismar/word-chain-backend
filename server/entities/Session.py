@@ -1,14 +1,15 @@
 from enum import Enum
 import uuid
 from entities.Player import Player
+from entities.RepositoryManager import RepositoryManager
 
 
 class GameStatus(int, Enum):
   CREATED = 0
   STARTED = 1
 
-class Session:
-  def __init__(self, name, _id=None, players=None, turn_index=0, chain=None, status=GameStatus.CREATED):
+class Session():
+  def __init__(self, name: str, _id=None, players=None, turn_index=0, chain=None, status=GameStatus.CREATED):
     if players is None: players = []
     if chain is None: chain = []
 
@@ -40,3 +41,7 @@ class Session:
     for player in self.players:
       if player.id == player_id: 
         return player
+    return None
+  
+  def save(self):
+    RepositoryManager.save(self)
