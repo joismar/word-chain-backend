@@ -17,8 +17,8 @@ class HttpResponse():
     }
   
   @classmethod
-  def Ok(cls, body: dict):
+  def Ok(cls, action: str, body: dict):
     return {
       'statusCode': 200,
-      'body': json.dumps(body)
+      'body': json.dumps({'action': action, **body})
     }
