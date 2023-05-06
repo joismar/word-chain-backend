@@ -38,7 +38,7 @@ class Game:
     return ActionResponse('join', {"player_id": player.id, "session_id": session.id, "game_name": session.name, "game_status": int(session.status)})
   
   def condition(self, player_id: str, player_condition: PlayerCondition, session_id: str):
-    session: Session = self.session_repository.get(session)
+    session: Session = self.session_repository.get(session_id)
     player: Player = session.find_player(player_id)
     if not player: return self.__error(Error.INEXISTENT_PLAYER)
     player.condition = player_condition
