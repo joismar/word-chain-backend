@@ -1,4 +1,5 @@
 from typing import List
+
 from entities.player import Player
 
 

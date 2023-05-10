@@ -1,17 +1,18 @@
-from typing import List, Union
 from decimal import Decimal
+from typing import List, Union
+
+import boto3
+from boto3.dynamodb.conditions import Key
+
 from entities.player import Player, PlayerCondition
 from interfaces.player_repository_interface import IPlayerRepository
-from boto3.dynamodb.conditions import Key
-import boto3
-
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table("players")
 
 
 class PlayerRepository(IPlayerRepository):
-    def get(self, player_id: str) -> Union(Player, None):
+    def get(self, player_id: str) -> Union[Player, None]:
         response = table.get_item(
             Key={"id": player_id})
         player_data = response.get("Item")
