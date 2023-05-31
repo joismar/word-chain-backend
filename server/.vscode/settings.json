@@ -1,0 +1,14 @@
+{
+  "python.linting.pylintEnabled": true,
+  "python.linting.enabled": true,
+  "python.linting.pylintArgs": ["--rcfile", ".pylintrc"],
+  "editor.detectIndentation": false,
+  "python.formatting.autopep8Args": ["--indent-size", "2", "--ignore", "E121", "--experimental"],
+  "python.formatting.provider": "autopep8",
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.defaultFormatter": "ms-python.autopep8",
+    "editor.insertSpaces": true,
+    "editor.formatOnSave": true
+},
+}
