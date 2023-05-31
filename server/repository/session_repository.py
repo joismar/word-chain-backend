@@ -64,8 +64,8 @@ class SessionRepository(ISessionRepository):
                 name=session_data['name'],
                 players=self.player_repository.get_players_by_session(
                     session_data['id']),
-                turn_index=session_data.get('turn_index', 0),
+                turn_index=int(session_data.get('turn_index', 0)),
                 chain=session_data.get('chain', []),
-                status=GameStatus(session_data.get('status', 0))
+                status=GameStatus(int(session_data.get('status', 0)))
             )
             return session
