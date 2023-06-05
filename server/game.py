@@ -12,7 +12,10 @@ from utils.calculate_score import calculate_score
 
 
 class GameData:
-    def __init__(self, status: GameStatus, chain: List[str], players: List[Player], turn: int):
+    def __init__(
+            self, status: GameStatus, chain: List[str],
+            players: List[Player],
+            turn: int):
         self.status = status
         self.chain = chain
         self.players = [player.to_dict() for player in players]
@@ -23,7 +26,9 @@ class GameData:
 
 
 class Game:
-    def __init__(self, session_repository: ISessionRepository, player_repository: IPlayerRepository, apigateway_management_api: any=None) -> None:
+    def __init__(self, session_repository: ISessionRepository,
+                 player_repository: IPlayerRepository,
+                 apigateway_management_api: any = None) -> None:
         self.session_repository: ISessionRepository = session_repository
         self.player_repository: IPlayerRepository = player_repository
         self.apigateway_management_api = apigateway_management_api
@@ -45,12 +50,17 @@ class Game:
         session.players.append(player)
         session.save()
 
-        return ActionResponse('host', {'player': player.to_dict(), 'game': { 'game_name': session.name, 'status': session.status }})
+        return ActionResponse(
+            'host',
+            {'player': {'id': player.id, 'name': player.name, 'session_id': player.session_id},
+             'game': {'game_name': session.name, 'status': session.status}})
 
     def join(self, game_name: str, player_name: str):
         session: Session = self.session_repository.get_by_name(game_name)
         if not session:
             return self.__error('join', Error.INEXISTENT_SESSION)
+        if session.status == GameStatus.STARTED:
+            return self.__error('join', Error.GAME_STARTED)
         player: Player = Player(
             player_name, _id=self.connection_id, session_id=session.id)
         session.players.append(player)
@@ -64,26 +74,31 @@ class Game:
 
         return ActionResponse('join', player.to_dict())
 
-    def condition(self, player_id: str, player_condition: PlayerCondition, session_id: str):
-        session: Session = self.session_repository.get(session_id)
+    def condition(self, player_condition: PlayerCondition):
+        connected_player = self.player_repository.get(self.connection_id)
+        if not connected_player:
+            return self.__error('condition', Error.INEXISTENT_PLAYER)
+        session: Session = self.session_repository.get(
+            connected_player.session_id)
         if not session:
             return self.__error('start', Error.INEXISTENT_SESSION)
-        player: Player = session.find_player(player_id)
-        if not player:
-            return self.__error('condition', Error.INEXISTENT_PLAYER)
-        player.condition = PlayerCondition(player_condition)
+        if session.status == GameStatus.STARTED:
+            return self.__error('join', Error.GAME_STARTED)
+
+        player = session.find_player(self.connection_id)
+        player.condition = PlayerCondition(int(player_condition))
         session.save()
 
         self.__broadcast(
             ActionResponse(
                 'game_data',
                 GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
-            [p.id for p in session.players ])
+            [p.id for p in session.players])
 
         return ActionResponse('condition', {'success': True})
 
-    def start(self, session_id: str):
-        session: Session = self.session_repository.get(session_id)
+    def start(self):
+        session: Session = self.session_repository.get(self.connection_id)
         if not session:
             return self.__error('start', Error.INEXISTENT_SESSION)
         if not self.__ready_to_start(session):
@@ -100,11 +115,15 @@ class Game:
 
         return ActionResponse('start', {'success': True})
 
-    def word(self, session_id: str, player_id: str, word: str):
-        session: Session = self.session_repository.get(session_id)
+    def word(self, word: str):
+        connected_player = self.player_repository.get(self.connection_id)
+        if not connected_player:
+            return self.__error('condition', Error.INEXISTENT_PLAYER)
+        session: Session = self.session_repository.get(
+            connected_player.session_id)
         if not session:
-            return self.__error('word', Error.INEXISTENT_SESSION)
-        if not session.turn_player.id == player_id:
+            return self.__error('start', Error.INEXISTENT_SESSION)
+        if not session.turn_player.id == connected_player.id:
             return self.__error('word', Error.INVALID_TURN)
         if word not in self.words:
             return self.__error('word', Error.INEXISTENT_WORD)
@@ -114,7 +133,9 @@ class Game:
             self.__broadcast(
                 ActionResponse(
                     'game_data',
-                    GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                    GameData(
+                        session.status, session.chain, session.players,
+                        session.turn_index).to_dict()),
                 [p.id for p in session.players])
             return self.__error('word', Error.WORD_ALREADY_IN_GAME)
 
@@ -131,7 +152,7 @@ class Game:
         messages = [Message.POINTS.value.format(score)]
         if chain_score > 0:
             messages.append(Message.CHAINED.value.format(chain_score))
-            
+
         session.save()
 
         self.__broadcast(
@@ -142,37 +163,43 @@ class Game:
 
         return ActionResponse('word', {'success': True})
 
-    def set_word_time(self, session_id: str, player_id: str, word_time: float):
-        session: Session = self.session_repository.get(session_id)
+    def set_word_time(self, word_time: float):
+        connected_player = self.player_repository.get(self.connection_id)
+        if not connected_player:
+            return self.__error('condition', Error.INEXISTENT_PLAYER)
+        session: Session = self.session_repository.get(
+            connected_player.session_id)
         if not session:
-            return self.__error('set_word_time', Error.INEXISTENT_SESSION)
-        player: Player = session.find_player(player_id)
-        if not player:
-            return self.__error('set_word_time', Error.INEXISTENT_PLAYER)
+            return self.__error('start', Error.INEXISTENT_SESSION)
 
-        player.last_word_time = word_time
+        connected_player.last_word_time = word_time
 
         session.save()
 
     def disconnect(self):
         player = self.player_repository.get(self.connection_id)
         session = self.session_repository.get(player.session_id)
-        
+
         if not player:
             return
         if player.session_id == player.id:
-            self.__disconnect_all([p.id for p in session.players if player.id != player.session_id])
+            self.__disconnect_all(
+                [p.id for p in session.players
+                 if player.id != player.session_id])
             self.session_repository.delete(self.connection_id)
         else:
             self.player_repository.delete(self.connection_id)
             self.__broadcast(
                 ActionResponse(
                     'game_data',
-                    GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                    GameData(
+                        session.status, session.chain, session.players,
+                        session.turn_index).to_dict()),
                 [p.id for p in session.players])
         return
-            
-    def __broadcast(self, action_response: ActionResponse, connections: List[str]):
+
+    def __broadcast(self, action_response: ActionResponse,
+                    connections: List[str]):
         client = self.apigateway_management_api
         for connection in connections:
             client.post_to_connection(
@@ -180,7 +207,7 @@ class Game:
                                 'data': action_response.data}).encode('gbk'),
                 ConnectionId=connection
             )
-            
+
     def __disconnect_all(self, connections: List[str]):
         client = self.apigateway_management_api
         for connection in connections:
@@ -189,7 +216,10 @@ class Game:
             )
 
     def __ready_to_start(self, session: Session):
-        return all(x.condition == PlayerCondition.READY for x in session.players)
+        return all(x.condition == PlayerCondition.READY for x in
+                   session.players)
 
     def __error(self, action: str, error: Error):
-        return ActionResponse(action, {"error": True, "message": error.value, "code": error.name})
+        return ActionResponse(
+            action,
+            {"error": True, "message": error.value, "code": error.name})
