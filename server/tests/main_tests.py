@@ -19,13 +19,12 @@ class TestMain(unittest.TestCase):
 
     def test_event_without_body_or_data(self):
         for body in [{}, {'body': '{}'}]:
-            event = {
-                'requestContext': {'connectionId': '123', 'routeKey': '$default'},
-                **body
-            }
+            event = {'requestContext': {
+                'connectionId': '123', 'routeKey': '$default'}, **body}
             context = {}
 
-            expected_response = HttpResponse.BadRequest('body or body.data is missing')
+            expected_response = HttpResponse.BadRequest(
+                'body or body.data is missing')
             response = main(event, context)
             self.assertEqual(response, expected_response)
 
@@ -36,15 +35,14 @@ class TestMain(unittest.TestCase):
         }
         context = {}
 
-        expected_response = HttpResponse.BadRequest('body.data should be a list')
+        expected_response = HttpResponse.BadRequest(
+            'body.data should be a list')
         response = main(event, context)
         self.assertEqual(response, expected_response)
 
-
     def test_disconnect_event(self):
-        event = {
-            'requestContext': {'connectionId': '123', 'routeKey': '$disconnect'}
-        }
+        event = {'requestContext': {
+            'connectionId': '123', 'routeKey': '$disconnect'}}
         context = {}
         expected_response = None
 
@@ -64,7 +62,7 @@ class TestMain(unittest.TestCase):
         @patch('main.SessionRepository')
         @patch('main.ApiGatewayService')
         def test(*_):
-            for action in ['host', 'join', 'condition', 'start', 'word']:
+            for action in ['host', 'join', 'status', 'start', 'word']:
                 with patch.object(Game, action, return_value=ActionResponse(action, {})) as mock_action:
                     event = {
                         'requestContext': {'connectionId': '123', 'routeKey': '$default'},

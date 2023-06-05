@@ -2,7 +2,7 @@ import json
 import random
 from typing import List
 
-from entities.player import Player, PlayerCondition
+from entities.player import Player, PlayerStatus
 from entities.session import GameStatus, Session
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
@@ -74,10 +74,10 @@ class Game:
 
         return ActionResponse('join', player.to_dict())
 
-    def condition(self, player_condition: PlayerCondition):
+    def status(self, player_status: PlayerStatus):
         connected_player = self.player_repository.get(self.connection_id)
         if not connected_player:
-            return self.__error('condition', Error.INEXISTENT_PLAYER)
+            return self.__error('status', Error.INEXISTENT_PLAYER)
         session: Session = self.session_repository.get(
             connected_player.session_id)
         if not session:
@@ -86,7 +86,7 @@ class Game:
             return self.__error('join', Error.GAME_STARTED)
 
         player = session.find_player(self.connection_id)
-        player.condition = PlayerCondition(int(player_condition))
+        player.status = PlayerStatus(int(player_status))
         session.save()
 
         self.__broadcast(
@@ -95,7 +95,7 @@ class Game:
                 GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
             [p.id for p in session.players])
 
-        return ActionResponse('condition', {'success': True})
+        return ActionResponse('status', {'success': True})
 
     def start(self):
         session: Session = self.session_repository.get(self.connection_id)
@@ -118,7 +118,7 @@ class Game:
     def word(self, word: str):
         connected_player = self.player_repository.get(self.connection_id)
         if not connected_player:
-            return self.__error('condition', Error.INEXISTENT_PLAYER)
+            return self.__error('status', Error.INEXISTENT_PLAYER)
         session: Session = self.session_repository.get(
             connected_player.session_id)
         if not session:
@@ -166,7 +166,7 @@ class Game:
     def set_word_time(self, word_time: float):
         connected_player = self.player_repository.get(self.connection_id)
         if not connected_player:
-            return self.__error('condition', Error.INEXISTENT_PLAYER)
+            return self.__error('status', Error.INEXISTENT_PLAYER)
         session: Session = self.session_repository.get(
             connected_player.session_id)
         if not session:
@@ -216,7 +216,7 @@ class Game:
             )
 
     def __ready_to_start(self, session: Session):
-        return all(x.condition == PlayerCondition.READY for x in
+        return all(x.status == PlayerStatus.READY for x in
                    session.players)
 
     def __error(self, action: str, error: Error):

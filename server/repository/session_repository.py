@@ -54,7 +54,7 @@ class SessionRepository(ISessionRepository):
     def get_by_name(self, session_name: str) -> Union[Session, None]:
         response = table.query(
             IndexName='name-index',
-            KeyConditionExpression=Key('name').eq(session_name)
+            KeyStatusExpression=Key('name').eq(session_name)
         )
         items = response.get('Items')
         if items:

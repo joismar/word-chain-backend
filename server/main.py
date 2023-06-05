@@ -42,7 +42,7 @@ def main(event, context):
         switch = {
             'host': game.host,
             'join': game.join,
-            'condition': game.condition,
+            'status': game.status,
             'start': game.start,
             'word': game.word,
         }
