@@ -2,13 +2,15 @@ import unittest
 from unittest.mock import MagicMock, mock_open, patch
 from entities.player import Player
 from entities.repository_manager import RepositoryManager
-from entities.session import GameStatus
+from entities.session import Session
+from messages.messages_pt import Error
 from responses.action_response import ActionResponse
-from game import Game
+from game import Game, GameData
 
 
 class TestGame(unittest.TestCase):
     def setUp(self):
+        self.maxDiff = 1000
         self.session_repository = MagicMock()
         self.player_repository = MagicMock()
         RepositoryManager.set_repository(self.session_repository)
@@ -35,14 +37,30 @@ class TestGame(unittest.TestCase):
 
         player: Player = Player(
             player_name, _id=connection_id, session_id=connection_id)
+        session: Session = Session(
+            "_".join(['word1', 'word2']), _id=connection_id, players=[player])
 
         expected_response = ActionResponse('host', {'player': player.to_dict(
-        ), 'game': {'game_name': 'word1_word2', 'status': GameStatus.CREATED}})
+        ), 'game': GameData(session).to_dict()})
 
         self.assertEqual(response.data, expected_response.data)
         self.assertEqual(response.action, expected_response.action)
 
         self.session_repository.save.assert_called_once()
+
+    def test_join_without_session(self):
+        connection_id = "12345"
+        self.game.set_connection_id(connection_id)
+        self.session_repository.get_by_name.return_value = None
+
+        response = self.game.join("session_id", "John")
+
+        expected_response = ActionResponse(
+            "join",
+            {"error": True, "message": Error.INEXISTENT_SESSION.value, "code": Error.INEXISTENT_SESSION.name})
+
+        self.assertEqual(response.data, expected_response.data)
+        self.assertEqual(response.action, expected_response.action)
 
 
 if __name__ == '__main__':
