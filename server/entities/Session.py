@@ -1,6 +1,6 @@
 from enum import Enum
 import uuid
-from entities.player import Player
+from entities.player import Player, PlayerStatus
 from entities.repository_manager import RepositoryManager
 
 
@@ -10,7 +10,9 @@ class GameStatus(int, Enum):
 
 
 class Session:
-    def __init__(self, name: str, _id=None, players=None, turn_index=0, chain=None, status=GameStatus.CREATED):
+    def __init__(
+            self, name: str, _id=None, players=None, turn_index=0, chain=None,
+            status=GameStatus.CREATED):
         if players is None:
             players = []
         if chain is None:
@@ -32,6 +34,9 @@ class Session:
             self.turn_index = 0
         else:
             self.turn_index += 1
+
+        if self.turn_player.status == PlayerStatus.OFFLINE:
+            self.swap_turn()
 
     def to_dict(self):
         old_players = self.players

@@ -12,14 +12,12 @@ from utils.calculate_score import calculate_score
 
 
 class GameData:
-    def __init__(
-            self, status: GameStatus, chain: List[str],
-            players: List[Player],
-            turn: int):
-        self.status = status
-        self.chain = chain
-        self.players = [player.to_dict() for player in players]
-        self.turn = turn
+    def __init__(self, session: Session):
+        self.status = session.status
+        self.chain = session.chain
+        self.players = [player.to_dict() for player in session.players]
+        self.turn = session.turn_index
+        self.name = session.name
 
     def to_dict(self):
         return self.__dict__
@@ -42,6 +40,21 @@ class Game:
     def set_connection_id(self, connection_id: str):
         self.connection_id = connection_id
 
+    def reconnect(self, old_connection_id: str):
+        connected_player = self.player_repository.get(old_connection_id)
+        if connected_player:
+            session = self.session_repository.get(connected_player.session_id)
+            if session:
+                player = session.find_player(connected_player.id)
+                player.status = PlayerStatus.IN_GAME
+                player.id = self.connection_id
+                session.save()
+                self.__broadcast(
+                    ActionResponse(
+                        'game_data',
+                        GameData(session).to_dict()),
+                    [p.id for p in session.players])
+
     def host(self, player_name: str):
         session: Session = Session(
             "_".join(random.sample(self.words, 2)), _id=self.connection_id)
@@ -52,8 +65,8 @@ class Game:
 
         return ActionResponse(
             'host',
-            {'player': {'id': player.id, 'name': player.name, 'session_id': player.session_id},
-             'game': {'game_name': session.name, 'status': session.status}})
+            {'player': player.to_dict(),
+             'game': GameData(session).to_dict()})
 
     def join(self, game_name: str, player_name: str):
         session: Session = self.session_repository.get_by_name(game_name)
@@ -69,7 +82,7 @@ class Game:
         self.__broadcast(
             ActionResponse(
                 'game_data',
-                GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                GameData(session).to_dict()),
             [p.id for p in session.players])
 
         return ActionResponse('join', player.to_dict())
@@ -78,7 +91,7 @@ class Game:
         connected_player = self.player_repository.get(self.connection_id)
         if not connected_player:
             return self.__error('status', Error.INEXISTENT_PLAYER)
-        session: Session = self.session_repository.get(
+        session = self.session_repository.get(
             connected_player.session_id)
         if not session:
             return self.__error('start', Error.INEXISTENT_SESSION)
@@ -92,7 +105,7 @@ class Game:
         self.__broadcast(
             ActionResponse(
                 'game_data',
-                GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                GameData(session).to_dict()),
             [p.id for p in session.players])
 
         return ActionResponse('status', {'success': True})
@@ -104,13 +117,15 @@ class Game:
         if not self.__ready_to_start(session):
             return self.__error('start', Error.ALL_PLAYERS_NEED_READY)
         session.status = GameStatus.STARTED
+        for player in session.players:
+            player.status = PlayerStatus.IN_GAME
         session.chain.append(random.choice(self.words))
         session.save()
 
         self.__broadcast(
             ActionResponse(
                 'game_data',
-                GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                GameData(session).to_dict()),
             [p.id for p in session.players])
 
         return ActionResponse('start', {'success': True})
@@ -133,9 +148,7 @@ class Game:
             self.__broadcast(
                 ActionResponse(
                     'game_data',
-                    GameData(
-                        session.status, session.chain, session.players,
-                        session.turn_index).to_dict()),
+                    GameData(session).to_dict()),
                 [p.id for p in session.players])
             return self.__error('word', Error.WORD_ALREADY_IN_GAME)
 
@@ -158,7 +171,7 @@ class Game:
         self.__broadcast(
             ActionResponse(
                 'game_data',
-                GameData(session.status, session.chain, session.players, session.turn_index).to_dict()),
+                GameData(session).to_dict()),
             [p.id for p in session.players])
 
         return ActionResponse('word', {'success': True})
@@ -182,20 +195,16 @@ class Game:
 
         if not player:
             return
-        if player.session_id == player.id:
-            self.__disconnect_all(
-                [p.id for p in session.players
-                 if player.id != player.session_id])
-            self.session_repository.delete(self.connection_id)
-        else:
-            self.player_repository.delete(self.connection_id)
-            self.__broadcast(
-                ActionResponse(
-                    'game_data',
-                    GameData(
-                        session.status, session.chain, session.players,
-                        session.turn_index).to_dict()),
-                [p.id for p in session.players])
+
+        player = session.find_player(self.connection_id)
+        player.status = PlayerStatus.OFFLINE
+        session.save()
+        self.__broadcast(
+            ActionResponse(
+                'game_data',
+                GameData(session).to_dict()),
+            [p.id for p in session.players if p.id != self.connection_id])
+
         return
 
     def __broadcast(self, action_response: ActionResponse,

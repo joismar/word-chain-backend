@@ -5,6 +5,8 @@ import uuid
 class PlayerStatus(int, Enum):
     WAITING = 0
     READY = 1
+    IN_GAME = 2
+    OFFLINE = 3
 
 
 class Player:
