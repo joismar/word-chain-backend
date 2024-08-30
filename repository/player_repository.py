@@ -4,7 +4,7 @@ from typing import List, Union
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from entities.player import Player, PlayerCondition
+from entities.player import Player, PlayerStatus
 from interfaces.player_repository_interface import IPlayerRepository
 
 dynamodb = boto3.resource("dynamodb")
@@ -22,7 +22,7 @@ class PlayerRepository(IPlayerRepository):
                 session_id=player_data["session_id"],
                 name=player_data["name"],
                 score=int(player_data["score"]),
-                condition=PlayerCondition(int(player_data["condition"])),
+                status=PlayerStatus(int(player_data["status"])),
                 last_word_time=float(player_data["last_word_time"]),
             )
             return player
@@ -33,7 +33,7 @@ class PlayerRepository(IPlayerRepository):
             "session_id": player.session_id,
             "name": player.name,
             "score": player.score,
-            "condition": player.condition.value,
+            "status": player.status.value,
             "last_word_time": Decimal(player.last_word_time),
         }
         table.put_item(Item=player_data)
@@ -53,7 +53,7 @@ class PlayerRepository(IPlayerRepository):
                 session_id=item["session_id"],
                 name=item["name"],
                 score=int(item["score"]),
-                condition=PlayerCondition(int(item["condition"])),
+                status=PlayerStatus(int(item["status"])),
                 last_word_time=float(item["last_word_time"]),
             )
             for item in items

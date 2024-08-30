@@ -3,7 +3,7 @@ from typing import Union
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from entities.session import GameStatus, Session
+from entities.session import GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
 
@@ -27,7 +27,7 @@ class SessionRepository(ISessionRepository):
                 players=self.player_repository.get_players_by_session(
                     session_id),
                 turn_index=int(item['turn_index']),
-                chain=item['chain'],
+                chain=[Word(x['word'], x['player_id']) for x in item['chain']],
                 status=GameStatus(int(item['status']))
             )
             return session
@@ -37,7 +37,7 @@ class SessionRepository(ISessionRepository):
             'name': session.name,
             'id': session.id,
             'turn_index': session.turn_index,
-            'chain': session.chain,
+            'chain': [item.to_dict() for item in session.chain],
             'status': session.status.value,
         }
 
@@ -65,7 +65,8 @@ class SessionRepository(ISessionRepository):
                 players=self.player_repository.get_players_by_session(
                     session_data['id']),
                 turn_index=int(session_data.get('turn_index', 0)),
-                chain=session_data.get('chain', []),
+                chain=[Word(x['word'], x['player_id'])
+                       for x in session_data.get('chain', [])],
                 status=GameStatus(int(session_data.get('status', 0)))
             )
             return session

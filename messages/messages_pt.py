@@ -5,6 +5,7 @@ class Message(str, Enum):
     CHAINED = "Você formou uma CORRENTE com {} pontos!"
     POINTS = "Você ganhou {} pontos!"
 
+
 class Error(str, Enum):
     INEXISTENT_SESSION = "Sessão não existe."
     INEXISTENT_PLAYER = "Jogador não existe."
@@ -13,4 +14,4 @@ class Error(str, Enum):
     INEXISTENT_WORD = "Palavra não existe."
     WORD_ALREADY_IN_GAME = "Palavra já foi usada no jogo."
     NO_POINTS = "A palavra não formou pontos."
-    
+    GAME_STARTED = "Não é permitido entrar em um jogo em execução."

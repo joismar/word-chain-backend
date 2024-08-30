@@ -2,18 +2,22 @@ from enum import Enum
 import uuid
 
 
-class PlayerCondition(int, Enum):
+class PlayerStatus(int, Enum):
     WAITING = 0
     READY = 1
+    IN_GAME = 2
+    OFFLINE = 3
 
 
 class Player:
-    def __init__(self, name, _id=None, score=0, condition=PlayerCondition.WAITING, session_id: str = None, last_word_time: float = 0):
+    def __init__(
+            self, name, _id=None, score=0, status=PlayerStatus.WAITING,
+            session_id: str = None, last_word_time: float = 0):
         self.id: str = _id or str(uuid.uuid4())
         self.session_id: str = session_id
         self.name: str = name
         self.score: int = score
-        self.condition: PlayerCondition = condition
+        self.status: PlayerStatus = status
         self.last_word_time: float = last_word_time
 
     def give_score(self, score):

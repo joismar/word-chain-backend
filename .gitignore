@@ -1,3 +1,4 @@
 node_modules
-__pycach__
+lambda_function
+__pycache__
 *.pyc
