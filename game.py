@@ -3,7 +3,7 @@ import random
 from typing import List
 
 from entities.player import Player, PlayerStatus
-from entities.session import GameStatus, Session
+from entities.session import GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
 from messages.messages_pt import Error, Message
@@ -14,7 +14,7 @@ from utils.calculate_score import calculate_score
 class GameData:
     def __init__(self, session: Session):
         self.status = session.status
-        self.chain = session.chain
+        self.chain = [item.to_dict() for item in session.chain]
         self.players = [player.to_dict() for player in session.players]
         self.turn = session.turn_index
         self.name = session.name
@@ -57,7 +57,7 @@ class Game:
 
     def host(self, player_name: str):
         session: Session = Session(
-            "_".join(random.sample(self.words, 2)), _id=self.connection_id)
+            random.choice(self.words), _id=self.connection_id)
         player: Player = Player(
             player_name, _id=self.connection_id, session_id=self.connection_id)
         session.players.append(player)
@@ -119,7 +119,7 @@ class Game:
         session.status = GameStatus.STARTED
         for player in session.players:
             player.status = PlayerStatus.IN_GAME
-        session.chain.append(random.choice(self.words))
+        session.chain.append(Word(random.choice(self.words), player.id))
         session.save()
 
         self.__broadcast(
@@ -142,7 +142,9 @@ class Game:
             return self.__error('word', Error.INVALID_TURN)
         if word not in self.words:
             return self.__error('word', Error.INEXISTENT_WORD)
-        if word in session.chain:
+
+        word_list = [item.word for item in session.chain]
+        if word in word_list:
             session.swap_turn()
             session.save()
             self.__broadcast(
@@ -152,14 +154,14 @@ class Game:
                 [p.id for p in session.players])
             return self.__error('word', Error.WORD_ALREADY_IN_GAME)
 
-        score = calculate_score(session.chain[-1], word)
-        chain_score = calculate_score(word, session.chain[-1])
+        score = calculate_score(word_list[-1], word)
+        chain_score = calculate_score(word, word_list[-1])
 
         if score == 0:
             return self.__error('word', Error.NO_POINTS)
 
         session.turn_player.give_score(chain_score + score)
-        session.chain.append(word)
+        session.chain.append(Word(word, connected_player.id))
         session.swap_turn()
 
         messages = [Message.POINTS.value.format(score)]
@@ -189,6 +191,7 @@ class Game:
 
         session.save()
 
+    # TODO: remove all connections from the session if the host disconnects
     def disconnect(self):
         player = self.player_repository.get(self.connection_id)
         session = self.session_repository.get(player.session_id)

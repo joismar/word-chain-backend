@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import List, Union
 
 import boto3
-from boto3.dynamodb.statuss import Key
+from boto3.dynamodb.conditions import Key
 
 from entities.player import Player, PlayerStatus
 from interfaces.player_repository_interface import IPlayerRepository
@@ -43,7 +43,7 @@ class PlayerRepository(IPlayerRepository):
 
     def get_players_by_session(self, session_id: str) -> List[Player]:
         response = table.query(
-            KeyStatusExpression=Key("session_id").eq(session_id),
+            KeyConditionExpression=Key("session_id").eq(session_id),
             IndexName="session_id-index"
         )
         items = response.get("Items", [])

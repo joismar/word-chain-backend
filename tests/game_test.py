@@ -32,13 +32,12 @@ class TestGame(unittest.TestCase):
         connection_id = "12345"
         self.game.set_connection_id(connection_id)
 
-        with patch('random.sample', return_value=['word1', 'word2']):
+        with patch('random.choice', return_value='word'):
             response = self.game.host(player_name)
 
         player: Player = Player(
             player_name, _id=connection_id, session_id=connection_id)
-        session: Session = Session(
-            "_".join(['word1', 'word2']), _id=connection_id, players=[player])
+        session: Session = Session('word', _id=connection_id, players=[player])
 
         expected_response = ActionResponse('host', {'player': player.to_dict(
         ), 'game': GameData(session).to_dict()})
@@ -58,6 +57,21 @@ class TestGame(unittest.TestCase):
         expected_response = ActionResponse(
             "join",
             {"error": True, "message": Error.INEXISTENT_SESSION.value, "code": Error.INEXISTENT_SESSION.name})
+
+        self.assertEqual(response.data, expected_response.data)
+        self.assertEqual(response.action, expected_response.action)
+
+    def test_join_with_started_session(self):
+        connection_id = "12345"
+        self.game.set_connection_id(connection_id)
+        session = Session("session_id", status=1)
+        self.session_repository.get_by_name.return_value = session
+
+        response = self.game.join("session_id", "John")
+
+        expected_response = ActionResponse(
+            "join",
+            {"error": True, "message": Error.GAME_STARTED.value, "code": Error.GAME_STARTED.name})
 
         self.assertEqual(response.data, expected_response.data)
         self.assertEqual(response.action, expected_response.action)
