@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Union
 
 import boto3
@@ -39,10 +40,12 @@ class SessionRepository(ISessionRepository):
             'turn_index': session.turn_index,
             'chain': [item.to_dict() for item in session.chain],
             'status': session.status.value,
+            'created_at': datetime.now().isoformat(),
         }
 
         for player in session.players:
             self.player_repository.save(player)
+
         table.put_item(Item=item)
 
     def delete(self, session_id) -> None:

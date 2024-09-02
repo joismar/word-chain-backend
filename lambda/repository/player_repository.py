@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import List, Union
 
@@ -35,6 +36,7 @@ class PlayerRepository(IPlayerRepository):
             "score": player.score,
             "status": player.status.value,
             "last_word_time": Decimal(player.last_word_time),
+            "created_at": datetime.now().isoformat(),
         }
         table.put_item(Item=player_data)
 
