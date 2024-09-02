@@ -40,7 +40,7 @@ class SessionRepository(ISessionRepository):
             'turn_index': session.turn_index,
             'chain': [item.to_dict() for item in session.chain],
             'status': session.status.value,
-            'created_at': datetime.now().isoformat(),
+            'expires_in': int((datetime.now() + timedelta(hours=1)).timestamp())
         }
 
         for player in session.players:

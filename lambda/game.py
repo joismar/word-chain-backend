@@ -2,7 +2,7 @@ import json
 import random
 from typing import List
 
-from entities.player import Player, PlayerStatus
+from entities.player import Player, PlayerColor, PlayerStatus
 from entities.session import GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
@@ -58,8 +58,9 @@ class Game:
     def host(self, player_name: str):
         session: Session = Session(
             random.choice(self.words), _id=self.connection_id)
+        unused_colors = [color for color in PlayerColor]
         player: Player = Player(
-            player_name, _id=self.connection_id, session_id=self.connection_id)
+            player_name, _id=self.connection_id, session_id=self.connection_id, color=random.choice(unused_colors))
         session.players.append(player)
         session.save()
 
@@ -74,8 +75,10 @@ class Game:
             return self.__error('join', Error.INEXISTENT_SESSION)
         if session.status == GameStatus.STARTED:
             return self.__error('join', Error.GAME_STARTED)
+        session_colors = self.get_session_active_colors(session)
+        unused_colors = [color for color in PlayerColor if color not in session_colors]
         player: Player = Player(
-            player_name, _id=self.connection_id, session_id=session.id)
+            player_name, _id=self.connection_id, session_id=session.id, color=random.choice(unused_colors))
         session.players.append(player)
         session.save()
 
@@ -129,6 +132,25 @@ class Game:
             [p.id for p in session.players])
 
         return ActionResponse('start', {'success': True})
+
+    def pass_turn(self):
+        connected_player = self.player_repository.get(self.connection_id)
+        if not connected_player:
+            return self.__error('status', Error.INEXISTENT_PLAYER)
+        session: Session = self.session_repository.get(
+            connected_player.session_id)
+        if not session:
+            return self.__error('start', Error.INEXISTENT_SESSION)
+        if not session.turn_player.id == connected_player.id:
+            return self.__error('word', Error.INVALID_TURN)
+        session.swap_turn()
+        session.save()
+        self.__broadcast(
+            ActionResponse(
+                'game_data',
+                GameData(session).to_dict()),
+            [p.id for p in session.players])
+        return ActionResponse('word', {'success': True})
 
     def word(self, word: str):
         connected_player = self.player_repository.get(self.connection_id)
@@ -208,7 +230,8 @@ class Game:
                 GameData(session).to_dict()),
             [p.id for p in session.players if p.id != self.connection_id])
 
-        return
+    def get_session_active_colors(self, session: Session):
+        return [player.color for player in session.players]
 
     def __broadcast(self, action_response: ActionResponse,
                     connections: List[str]):

@@ -3,14 +3,14 @@ import json
 
 class HttpResponse:
     @classmethod
-    def InternalServerError(cls, message: str, error=None):
+    def InternalServerError(cls, message: str, error='Internal error'):
         return {
             'statusCode': 500,
             'body': json.dumps({'message': message, 'error': error})
         }
 
     @classmethod
-    def BadRequest(cls, message: str, error=None):
+    def BadRequest(cls, message: str, error='Application error'):
         return {
             'statusCode': 400,
             'body': json.dumps({'message': message, 'error': error})

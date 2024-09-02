@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Union
 
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from entities.player import Player, PlayerStatus
+from entities.player import Player, PlayerColor, PlayerStatus
 from interfaces.player_repository_interface import IPlayerRepository
 
 dynamodb = boto3.resource("dynamodb")
@@ -25,6 +25,7 @@ class PlayerRepository(IPlayerRepository):
                 score=int(player_data["score"]),
                 status=PlayerStatus(int(player_data["status"])),
                 last_word_time=float(player_data["last_word_time"]),
+                color=PlayerColor(int(player_data["color"])) if player_data.get("color") else None
             )
             return player
 
@@ -36,7 +37,8 @@ class PlayerRepository(IPlayerRepository):
             "score": player.score,
             "status": player.status.value,
             "last_word_time": Decimal(player.last_word_time),
-            "created_at": datetime.now().isoformat(),
+            'expires_in': int((datetime.now() + timedelta(hours=1)).timestamp()),
+            "color": int(player.color.value) if player.color else None,
         }
         table.put_item(Item=player_data)
 
@@ -57,6 +59,7 @@ class PlayerRepository(IPlayerRepository):
                 score=int(item["score"]),
                 status=PlayerStatus(int(item["status"])),
                 last_word_time=float(item["last_word_time"]),
+                color=PlayerColor(int(item["color"])) if item.get("color") else None,
             )
             for item in items
         ]

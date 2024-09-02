@@ -37,6 +37,10 @@ class GameApplication:
             if not isinstance(body['data'], list):
                 return HttpResponse.BadRequest('body.data should be a list')
 
+            for body_data in body['data']:
+                if len(body_data) == 0:
+                    return HttpResponse.BadRequest('body.data should not be empty')
+
             game.load_words()
 
             switch = {
@@ -45,7 +49,8 @@ class GameApplication:
                 'status': game.status,
                 'start': game.start,
                 'word': game.word,
-                'reconnect': game.reconnect
+                'reconnect': game.reconnect,
+                'pass': game.pass_turn,
             }
 
             response = switch[body['action']](*body['data'])
