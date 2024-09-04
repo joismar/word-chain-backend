@@ -15,3 +15,4 @@ class Error(str, Enum):
     WORD_ALREADY_IN_GAME = "Palavra já foi usada no jogo."
     NO_POINTS = "A palavra não formou pontos."
     GAME_STARTED = "Não é permitido entrar em um jogo em execução."
+    END_GAME_PERMISSION = "Apenas o jogador que criou o jogo pode finalizá-lo."

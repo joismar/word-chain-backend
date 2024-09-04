@@ -4,9 +4,10 @@ from typing import Union
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from entities.session import GameStatus, Session, Word
+from entities.session import GameStatus, Session, Word, GameMode
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
+from messages.messages_pt import Error
 
 
 dynamodb = boto3.resource('dynamodb')
@@ -29,9 +30,13 @@ class SessionRepository(ISessionRepository):
                     session_id),
                 turn_index=int(item['turn_index']),
                 chain=[Word(x['word'], x['player_id']) for x in item['chain']],
-                status=GameStatus(int(item['status']))
+                status=GameStatus(int(item['status'])),
+                game_mode=GameMode(int(item['game_mode'])),
+                started_at=item['started_at'],
             )
             return session
+
+        raise Exception(Error.INEXISTENT_SESSION)
 
     def save(self, session: Session) -> None:
         item = {
@@ -40,7 +45,9 @@ class SessionRepository(ISessionRepository):
             'turn_index': session.turn_index,
             'chain': [item.to_dict() for item in session.chain],
             'status': session.status.value,
-            'expires_in': int((datetime.now() + timedelta(hours=1)).timestamp())
+            'expires_in': int((datetime.now() + timedelta(hours=1)).timestamp()),
+            'game_mode': session.game_mode.value,
+            'started_at': session.started_at,
         }
 
         for player in session.players:
@@ -70,6 +77,8 @@ class SessionRepository(ISessionRepository):
                 turn_index=int(session_data.get('turn_index', 0)),
                 chain=[Word(x['word'], x['player_id'])
                        for x in session_data.get('chain', [])],
-                status=GameStatus(int(session_data.get('status', 0)))
+                status=GameStatus(int(session_data.get('status', 0))),
+                game_mode=GameMode(int(session_data.get('game_mode', 0))),
+                started_at=int(session_data.get('started_at', 0))
             )
             return session

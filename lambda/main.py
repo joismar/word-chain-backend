@@ -4,6 +4,7 @@ import traceback
 from api_gateway_service import ApiGatewayService
 from entities.repository_manager import RepositoryManager
 from game import Game
+from responses.action_response import ActionResponse
 from responses.http_response import HttpResponse
 
 
@@ -51,14 +52,19 @@ class GameApplication:
                 'word': game.word,
                 'reconnect': game.reconnect,
                 'pass': game.pass_turn,
+                'end': game.end_game,
             }
 
             response = switch[body['action']](*body['data'])
             return HttpResponse.Ok(response.action, {'data': response.data})
         except (KeyError, ValueError) as e:
+            if body['action']:
+                return HttpResponse.BadRequest('Internal error!', str(e), body['action'])
             return HttpResponse.BadRequest('Data validation error!', str(e))
         except Exception as e:
             traceback.print_exc()
+            if body['action']:
+                return HttpResponse.InternalServerError('Internal error!', str(e), body['action'])
             return HttpResponse.InternalServerError('Internal error!', str(e))
 
 
@@ -75,4 +81,5 @@ def main(event, context):
 
     app = GameApplication(session_repository,
                           player_repository, api_gateway_client)
+
     return app.run(event, context)

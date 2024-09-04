@@ -7,6 +7,12 @@ from entities.repository_manager import RepositoryManager
 class GameStatus(int, Enum):
     CREATED = 0
     STARTED = 1
+    FINISHED = 2
+
+
+class GameMode(int, Enum):
+    TIME = 0
+    REPETITION = 1
 
 
 class Word:
@@ -21,7 +27,8 @@ class Word:
 class Session:
     def __init__(
             self, name: str, _id=None, players=None, turn_index=0, chain=None,
-            status=GameStatus.CREATED):
+            status=GameStatus.CREATED, game_mode=GameMode.TIME, started_at=None):
+
         if players is None:
             players = []
         if chain is None:
@@ -33,6 +40,8 @@ class Session:
         self.turn_index: int = turn_index
         self.chain: list[Word] = chain
         self.status: GameStatus = status
+        self.game_mode: GameMode = game_mode
+        self.started_at: int = started_at
 
     @property
     def turn_player(self):

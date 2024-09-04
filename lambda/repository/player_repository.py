@@ -7,6 +7,7 @@ from boto3.dynamodb.conditions import Key
 
 from entities.player import Player, PlayerColor, PlayerStatus
 from interfaces.player_repository_interface import IPlayerRepository
+from messages.messages_pt import Error
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table("players")
@@ -25,9 +26,12 @@ class PlayerRepository(IPlayerRepository):
                 score=int(player_data["score"]),
                 status=PlayerStatus(int(player_data["status"])),
                 last_word_time=float(player_data["last_word_time"]),
-                color=PlayerColor(int(player_data["color"])) if player_data.get("color") else None
+                color=PlayerColor(int(player_data["color"])) if player_data.get(
+                    "color") else None
             )
             return player
+
+        raise Exception(Error.INEXISTENT_PLAYER)
 
     def save(self, player: Player) -> None:
         player_data = {
@@ -59,7 +63,8 @@ class PlayerRepository(IPlayerRepository):
                 score=int(item["score"]),
                 status=PlayerStatus(int(item["status"])),
                 last_word_time=float(item["last_word_time"]),
-                color=PlayerColor(int(item["color"])) if item.get("color") else None,
+                color=PlayerColor(int(item["color"])) if item.get(
+                    "color") else None,
             )
             for item in items
         ]
