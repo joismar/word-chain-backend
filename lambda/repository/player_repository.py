@@ -7,7 +7,8 @@ from boto3.dynamodb.conditions import Key
 
 from entities.player import Player, PlayerColor, PlayerStatus
 from interfaces.player_repository_interface import IPlayerRepository
-from messages.messages_pt import Error
+from messages.messages_pt import ErrorMessage
+from utils.errors import GameException
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table("players")
@@ -31,7 +32,7 @@ class PlayerRepository(IPlayerRepository):
             )
             return player
 
-        raise Exception(Error.INEXISTENT_PLAYER)
+        raise GameException(ErrorMessage.INEXISTENT_PLAYER)
 
     def save(self, player: Player) -> None:
         player_data = {

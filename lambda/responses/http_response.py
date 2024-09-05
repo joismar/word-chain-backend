@@ -1,18 +1,19 @@
 import json
+from utils.errors import GameException
 
 
 class HttpResponse:
     @classmethod
-    def InternalServerError(cls, message: str, error='Internal error', action: str = None):
-        body = {'message': message, 'error': error}
+    def InternalServerError(cls, error: Exception | GameException, action: str = None):
+        body = {'message': error.message, 'error': error.code}
         return {
             'statusCode': 500,
             'body': json.dumps({'action': action, 'data': body})
         }
 
     @classmethod
-    def BadRequest(cls, message: str, error='Application error', action: str = None):
-        body = {'message': message, 'error': error}
+    def BadRequest(cls, error: Exception | GameException, action: str = None):
+        body = {'message': error.message, 'error': error.code}
         return {
             'statusCode': 400,
             'body': json.dumps({'action': action, 'data': body})

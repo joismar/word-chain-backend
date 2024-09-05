@@ -6,6 +6,7 @@ from entities.repository_manager import RepositoryManager
 from game import Game
 from responses.action_response import ActionResponse
 from responses.http_response import HttpResponse
+from utils.errors import GameException
 
 
 class GameApplication:
@@ -19,6 +20,13 @@ class GameApplication:
         print(json.dumps(event))
         print(context)
 
+        body = None
+        action = None
+        if 'body' in event:
+            body = json.loads(event['body'])
+            if 'action' in body:
+                action = body['action']
+
         try:
             game = Game(self.session_repository,
                         self.player_repository, self.api_gateway_client)
@@ -30,17 +38,18 @@ class GameApplication:
             if event['requestContext']['routeKey'] == '$disconnect':
                 return game.disconnect()
 
-            if ('body' not in event) or ('data' not in json.loads(event['body'])):
-                return HttpResponse.BadRequest('body or body.data is missing')
+            if (not body) or ('data' not in body):
+                raise KeyError('body or body.data is missing')
 
-            body = json.loads(event['body'])
+            if not action:
+                raise KeyError('action is missing')
 
             if not isinstance(body['data'], list):
-                return HttpResponse.BadRequest('body.data should be a list')
+                raise KeyError('body.data should be a list')
 
             for body_data in body['data']:
                 if len(body_data) == 0:
-                    return HttpResponse.BadRequest('body.data should not be empty')
+                    raise KeyError('body.data should not be empty')
 
             game.load_words()
 
@@ -55,20 +64,15 @@ class GameApplication:
                 'end': game.end_game,
             }
 
-            response = switch[body['action']](*body['data'])
+            response = switch[action](*body['data'])
             return HttpResponse.Ok(response.action, {'data': response.data})
-        except (KeyError, ValueError) as e:
-            if body['action']:
-                return HttpResponse.BadRequest('Internal error!', str(e), body['action'])
-            return HttpResponse.BadRequest('Data validation error!', str(e))
+        except (KeyError, ValueError, GameException) as e:
+            return HttpResponse.BadRequest(e, action)
         except Exception as e:
             traceback.print_exc()
-            if body['action']:
-                return HttpResponse.InternalServerError('Internal error!', str(e), body['action'])
-            return HttpResponse.InternalServerError('Internal error!', str(e))
+            return HttpResponse.InternalServerError(e)
 
 
-# Função para configurar e iniciar a aplicação
 def main(event, context):
     from repository.player_repository import PlayerRepository
     from repository.session_repository import SessionRepository

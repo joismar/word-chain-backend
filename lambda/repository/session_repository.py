@@ -7,7 +7,8 @@ from boto3.dynamodb.conditions import Key
 from entities.session import GameStatus, Session, Word, GameMode
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
-from messages.messages_pt import Error
+from messages.messages_pt import ErrorMessage
+from utils.errors import GameException
 
 
 dynamodb = boto3.resource('dynamodb')
@@ -22,6 +23,7 @@ class SessionRepository(ISessionRepository):
     def get(self, session_id: str) -> Union[Session, None]:
         response = table.get_item(Key={'id': session_id})
         item = response.get('Item')
+
         if item:
             session = Session(
                 name=item['name'],
@@ -35,8 +37,8 @@ class SessionRepository(ISessionRepository):
                 started_at=item['started_at'],
             )
             return session
-
-        raise Exception(Error.INEXISTENT_SESSION)
+        
+        raise GameException(ErrorMessage.INEXISTENT_SESSION)
 
     def save(self, session: Session) -> None:
         item = {
@@ -79,6 +81,9 @@ class SessionRepository(ISessionRepository):
                        for x in session_data.get('chain', [])],
                 status=GameStatus(int(session_data.get('status', 0))),
                 game_mode=GameMode(int(session_data.get('game_mode', 0))),
-                started_at=int(session_data.get('started_at', 0))
+                started_at=session_data.get('started_at', 0)
             )
             return session
+            
+        raise GameException(ErrorMessage.INEXISTENT_SESSION)
+

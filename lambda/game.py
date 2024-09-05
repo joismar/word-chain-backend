@@ -7,9 +7,10 @@ from entities.player import Player, PlayerColor, PlayerStatus
 from entities.session import GameMode, GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
-from messages.messages_pt import Error, Message
+from messages.messages_pt import ErrorMessage, Message
 from responses.action_response import ActionResponse
 from utils.calculate_score import calculate_score
+from utils.errors import GameException
 
 
 class GameData:
@@ -76,7 +77,7 @@ class Game:
         session: Session = self.session_repository.get_by_name(game_name)
 
         if session.status == GameStatus.STARTED:
-            return self.__error('join', Error.GAME_STARTED)
+            raise GameException(ErrorMessage.GAME_STARTED)
         session_colors = self.get_session_active_colors(session)
         unused_colors = [
             color for color in PlayerColor if color not in session_colors]
@@ -99,7 +100,7 @@ class Game:
             connected_player.session_id)
 
         if session.status == GameStatus.STARTED:
-            return self.__error('join', Error.GAME_STARTED)
+            raise GameException(ErrorMessage.GAME_STARTED)
 
         player = session.find_player(self.connection_id)
         player.status = PlayerStatus(int(player_status))
@@ -117,7 +118,7 @@ class Game:
         session: Session = self.session_repository.get(self.connection_id)
 
         if not self.__ready_to_start(session):
-            return self.__error('start', Error.ALL_PLAYERS_NEED_READY)
+            raise GameException(ErrorMessage.ALL_PLAYERS_NEED_READY)
 
         for player in session.players:
             player.status = PlayerStatus.IN_GAME
@@ -143,7 +144,7 @@ class Game:
             connected_player.session_id)
 
         if not session.turn_player.id == connected_player.id:
-            return self.__error('word', Error.INVALID_TURN)
+            raise GameException(ErrorMessage.INVALID_TURN)
 
         session.swap_turn()
         session.save()
@@ -161,10 +162,10 @@ class Game:
             connected_player.session_id)
 
         if not session.turn_player.id == connected_player.id:
-            return self.__error('word', Error.INVALID_TURN)
+            raise GameException(ErrorMessage.INVALID_TURN)
 
         if word not in self.words:
-            return self.__error('word', Error.INEXISTENT_WORD)
+            raise GameException(ErrorMessage.INEXISTENT_WORD)
 
         word_list = [item.word for item in session.chain]
         if word in word_list:
@@ -175,13 +176,13 @@ class Game:
                     'game_data',
                     GameData(session).to_dict()),
                 [p.id for p in session.players])
-            return self.__error('word', Error.WORD_ALREADY_IN_GAME)
+            raise GameException(ErrorMessage.WORD_ALREADY_IN_GAME)
 
         score = calculate_score(word_list[-1], word)
         chain_score = calculate_score(word, word_list[-1])
 
         if score == 0:
-            return self.__error('word', Error.NO_POINTS)
+            raise GameException(ErrorMessage.NO_POINTS)
 
         session.turn_player.give_score(chain_score + score)
         session.chain.append(Word(word, connected_player.id))
@@ -235,7 +236,7 @@ class Game:
             connected_player.session_id)
 
         if session.id != connected_player.id:
-            return self.__error('end', Error.END_GAME_PERMISSION)
+            raise GameException(ErrorMessage.END_GAME_PERMISSION)
 
         session.status = GameStatus.FINISHED
         session.save()
@@ -266,8 +267,3 @@ class Game:
     def __ready_to_start(self, session: Session):
         return all(x.status == PlayerStatus.READY for x in
                    session.players)
-
-    def __error(self, action: str, error: Error):
-        return ActionResponse(
-            action,
-            {"error": True, "message": error.value, "code": error.name})

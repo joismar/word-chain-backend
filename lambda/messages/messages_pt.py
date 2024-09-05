@@ -6,7 +6,7 @@ class Message(str, Enum):
     POINTS = "Você ganhou {} pontos!"
 
 
-class Error(str, Enum):
+class ErrorMessage(str, Enum):
     INEXISTENT_SESSION = "Sessão não existe."
     INEXISTENT_PLAYER = "Jogador não existe."
     ALL_PLAYERS_NEED_READY = "Todos os jogadores precisam estar prontos."
