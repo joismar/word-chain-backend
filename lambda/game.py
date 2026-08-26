@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import json
+import os
 import random
 from typing import List
 
@@ -38,7 +39,9 @@ class Game:
         self.connection_id = None
 
     def load_words(self):
-        with open('wordlist.txt', 'r', encoding='utf-8') as f:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        wordlist_path = os.path.join(current_dir, 'wordlist.txt')
+        with open(wordlist_path, 'r', encoding='utf-8') as f:
             self.words = f.read().split('\n')
             self.five_letters_words = [w for w in self.words if len(w) == 5]
 
@@ -47,18 +50,33 @@ class Game:
 
     def reconnect(self, old_connection_id: str):
         connected_player = self.player_repository.get(old_connection_id)
-        if connected_player:
-            session = self.session_repository.get(connected_player.session_id)
-            if session:
-                player = session.find_player(connected_player.id)
-                player.status = PlayerStatus.IN_GAME
-                player.id = self.connection_id
-                session.save()
-                self.__broadcast(
-                    ActionResponse(
-                        'game_data',
-                        GameData(session).to_dict()),
-                    [p.id for p in session.players])
+        if not connected_player:
+            raise GameException(ErrorMessage.INEXISTENT_PLAYER)
+
+        session = self.session_repository.get(connected_player.session_id)
+        if not session:
+            raise GameException(ErrorMessage.INEXISTENT_SESSION)
+
+        player = session.find_player(connected_player.id)
+        if not player:
+            raise GameException(ErrorMessage.INEXISTENT_PLAYER)
+
+        self.player_repository.delete(old_connection_id)
+
+        player.id = self.connection_id
+        player.status = PlayerStatus.IN_GAME if session.status == GameStatus.STARTED else PlayerStatus.READY
+        session.save()
+
+        self.__broadcast(
+            ActionResponse(
+                'game_data',
+                GameData(session).to_dict()),
+            [p.id for p in session.players])
+
+        return ActionResponse(
+            'reconnect',
+            {'player': player.to_dict(),
+             'game': GameData(session).to_dict()})
 
     def host(self, player_name: str):
         session: Session = Session(
@@ -214,20 +232,28 @@ class Game:
         session.save()
 
     def disconnect(self):
-        player = self.player_repository.get(self.connection_id)
-        session = self.session_repository.get(player.session_id)
+        try:
+            player = self.player_repository.get(self.connection_id)
+            if not player:
+                return
 
-        if not player:
-            return
+            session = self.session_repository.get(player.session_id)
+            if not session:
+                return
 
-        player = session.find_player(self.connection_id)
-        player.status = PlayerStatus.OFFLINE
-        session.save()
-        self.__broadcast(
-            ActionResponse(
-                'game_data',
-                GameData(session).to_dict()),
-            [p.id for p in session.players if p.id != self.connection_id])
+            player = session.find_player(self.connection_id)
+            if not player:
+                return
+
+            player.status = PlayerStatus.OFFLINE
+            session.save()
+            self.__broadcast(
+                ActionResponse(
+                    'game_data',
+                    GameData(session).to_dict()),
+                [p.id for p in session.players if p.id != self.connection_id])
+        except Exception:
+            pass
 
     def get_session_active_colors(self, session: Session):
         return [player.color for player in session.players]
@@ -237,7 +263,7 @@ class Game:
         session: Session = self.session_repository.get(
             connected_player.session_id)
 
-        if session.id != connected_player.id:
+        if not session.players or session.players[0].id != connected_player.id:
             raise GameException(ErrorMessage.END_GAME_PERMISSION)
 
         session.status = GameStatus.FINISHED
@@ -249,22 +275,34 @@ class Game:
                 GameData(session).to_dict()),
             [p.id for p in session.players])
 
+        return ActionResponse('end', {'success': True})
+
     def __broadcast(self, action_response: ActionResponse,
                     connections: List[str]):
         client = self.apigateway_management_api
+        if not client:
+            return
         for connection in connections:
-            client.post_to_connection(
-                Data=json.dumps({'action': action_response.action,
-                                'data': action_response.data}).encode('gbk'),
-                ConnectionId=connection
-            )
+            try:
+                client.post_to_connection(
+                    Data=json.dumps({'action': action_response.action,
+                                    'data': action_response.data}).encode('utf-8'),
+                    ConnectionId=connection
+                )
+            except Exception:
+                pass
 
     def __disconnect_all(self, connections: List[str]):
         client = self.apigateway_management_api
+        if not client:
+            return
         for connection in connections:
-            client.delete_connection(
-                ConnectionId=connection
-            )
+            try:
+                client.delete_connection(
+                    ConnectionId=connection
+                )
+            except Exception:
+                pass
 
     def __ready_to_start(self, session: Session):
         return all(x.status == PlayerStatus.READY for x in

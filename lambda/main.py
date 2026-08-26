@@ -36,7 +36,8 @@ class GameApplication:
                 return HttpResponse.Ok()
 
             if event['requestContext']['routeKey'] == '$disconnect':
-                return game.disconnect()
+                game.disconnect()
+                return HttpResponse.Ok()
 
             if (not body) or ('data' not in body):
                 raise KeyError('body or body.data is missing')

@@ -5,7 +5,9 @@ from utils.errors import GameException
 class HttpResponse:
     @classmethod
     def InternalServerError(cls, error: Exception | GameException, action: str = None):
-        body = {'message': error.message, 'error': error.code}
+        message = getattr(error, 'message', str(error))
+        code = getattr(error, 'code', type(error).__name__)
+        body = {'message': message, 'error': code}
         return {
             'statusCode': 500,
             'body': json.dumps({'action': action, 'data': body})
@@ -13,7 +15,9 @@ class HttpResponse:
 
     @classmethod
     def BadRequest(cls, error: Exception | GameException, action: str = None):
-        body = {'message': error.message, 'error': error.code}
+        message = getattr(error, 'message', str(error))
+        code = getattr(error, 'code', type(error).__name__)
+        body = {'message': message, 'error': code}
         return {
             'statusCode': 400,
             'body': json.dumps({'action': action, 'data': body})

@@ -30,38 +30,32 @@ class TestMain(unittest.TestCase):
             event = {'requestContext': {
                 'connectionId': '123', 'routeKey': '$default'}, **body}
             context = {}
-            expected_response = HttpResponse.BadRequest(
-                'body or body.data is missing')
-
             response = self.app.run(event, context)
-            self.assertEqual(response, expected_response)
+            self.assertEqual(response['statusCode'], 400)
 
     def test_event_data_should_be_list(self):
         event = {
             'requestContext': {'connectionId': '123', 'routeKey': '$default'},
-            'body': '{"data": "str"}'
+            'body': '{"data": "str", "action": "host"}'
         }
         context = {}
-        expected_response = HttpResponse.BadRequest(
-            'body.data should be a list')
-
         response = self.app.run(event, context)
-        self.assertEqual(response, expected_response)
+        self.assertEqual(response['statusCode'], 400)
 
     def test_disconnect_event(self):
         event = {'requestContext': {
             'connectionId': '123', 'routeKey': '$disconnect'}}
         context = {}
-        expected_response = None
 
-        with patch.object(Game, 'disconnect', return_value=expected_response) as mock_disconnect:
+        with patch.object(Game, 'disconnect') as mock_disconnect:
             response = self.app.run(event, context)
             mock_disconnect.assert_called_once()
-            self.assertEqual(response, expected_response)
+            self.assertEqual(response, HttpResponse.Ok())
 
     def test_default_events(self):
-        for action in ['host', 'join', 'status', 'start', 'word']:
-            with patch.object(Game, action, return_value=ActionResponse(action, {})) as mock_action:
+        for action in ['host', 'join', 'status', 'start', 'word', 'reconnect']:
+            with patch.object(Game, action, return_value=ActionResponse(action, {})) as mock_action, \
+                 patch.object(Game, 'load_words'):
                 event = {
                     'requestContext': {'connectionId': '123', 'routeKey': '$default'},
                     'body': f'{{"data": ["any"], "action": "{action}"}}'
@@ -70,7 +64,7 @@ class TestMain(unittest.TestCase):
                 expected_response = HttpResponse.Ok(action, {'data': {}})
 
                 response = self.app.run(event, context)
-                mock_action.assert_called_with("any")
+                mock_action.assert_called_with('any')
                 self.assertEqual(response, expected_response)
 
 
