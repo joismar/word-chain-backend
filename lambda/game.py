@@ -34,11 +34,13 @@ class Game:
         self.player_repository: IPlayerRepository = player_repository
         self.apigateway_management_api = apigateway_management_api
         self.words = None
+        self.five_letters_words = None
         self.connection_id = None
 
     def load_words(self):
         with open('wordlist.txt', 'r', encoding='utf-8') as f:
             self.words = f.read().split('\n')
+            self.five_letters_words = [w for w in self.words if len(w) == 5]
 
     def set_connection_id(self, connection_id: str):
         self.connection_id = connection_id
@@ -60,7 +62,7 @@ class Game:
 
     def host(self, player_name: str):
         session: Session = Session(
-            random.choice(self.words), _id=self.connection_id)
+            random.choice(self.five_letters_words), _id=self.connection_id)
         unused_colors = list(PlayerColor)
         player: Player = Player(
             player_name, _id=self.connection_id, session_id=self.connection_id, color=random.choice(unused_colors))
