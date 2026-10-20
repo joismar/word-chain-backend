@@ -1,228 +1,281 @@
+import os
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
-from entities.player import Player, PlayerStatus
-from entities.repository_manager import RepositoryManager
-from entities.session import GameConfig, GameStatus, Session, Word
-from messages.messages_pt import ErrorMessage
-from responses.action_response import ActionResponse
-from utils.errors import GameException
-from game import Game, GameData
-from utils import wordlist
+from unittest.mock import patch
+
+os.environ.setdefault('POWERTOOLS_LOG_LEVEL', 'CRITICAL')
+
+from entities.player import PlayerStatus  # noqa: E402
+from entities.session import START_COUNTDOWN_MS, TURN_MS, GameStatus, Word  # noqa: E402
+from game import Game  # noqa: E402
+from protocol.models import AckMessage, SessionMessage, client_message_adapter  # noqa: E402
+from tests.fakes import FakeGateway, FakePlayerRepository, FakeSessionRepository  # noqa: E402
+from utils.errors import GameException  # noqa: E402
+
+WORD_LIST = ('casas', 'livro', 'casa', 'sapo', 'pote', 'teto', 'sala', 'lata', 'saco')
+WORDS = (frozenset(WORD_LIST), WORD_LIST, ('casas', 'livro'))
+T0 = 1_700_000_000_000
 
 
-class TestGame(unittest.TestCase):
+def msg(type_, **payload):
+    return client_message_adapter.validate_python(
+        {'v': 2, 'type': type_, 'requestId': f'req-{type_}', 'payload': payload})
+
+
+class GameTestCase(unittest.TestCase):
     def setUp(self):
-        self.maxDiff = 1000
-        self.session_repository = MagicMock()
-        self.player_repository = MagicMock()
-        self.api_gateway = MagicMock()
-        RepositoryManager.set_repository(self.session_repository)
-        self.game = Game(self.session_repository, self.player_repository, self.api_gateway)
+        self.players = FakePlayerRepository()
+        self.sessions = FakeSessionRepository(self.players)
+        self.gateway = FakeGateway()
+        self.now = T0
+        self.choice = patch('game.random.choice', side_effect=lambda seq: list(seq)[0])
+        self.choice.start()
+        self.addCleanup(self.choice.stop)
 
-    def test_load_words(self):
-        wordlist.clear_cache()
-        with patch('builtins.open', mock_open(read_data='casas\npao\n\nlivro\n')):
-            self.game.load_words()
+    def game(self, connection_id):
+        return Game(self.sessions, self.players, self.gateway,
+                    connection_id=connection_id, now=self.now, words_loader=lambda: WORDS)
 
-        self.assertEqual(self.game.words, frozenset({'casas', 'pao', 'livro'}))
-        self.assertEqual(set(self.game.word_list), {'casas', 'pao', 'livro'})
-        self.assertEqual(set(self.game.five_letters_words), {'casas', 'livro'})
+    def send(self, connection_id, type_, **payload):
+        return self.game(connection_id).handle(msg(type_, **payload))
 
-    def test_load_words_reads_file_once_per_container(self):
-        wordlist.clear_cache()
-        with patch('builtins.open', mock_open(read_data='casas\nlivro')) as opened:
-            self.game.load_words()
-            Game(self.session_repository, self.player_repository).load_words()
-
-        opened.assert_called_once()
-
-    def test_set_connection_id(self):
-        connection_id = '12345'
-        self.game.set_connection_id(connection_id)
-        self.assertEqual(self.game.connection_id, connection_id)
-
-    def test_host(self):
-        player_name = 'John'
-        connection_id = '12345'
-        self.game.set_connection_id(connection_id)
-        self.game.five_letters_words = ['words']
-
-        with patch('random.choice', return_value='words'):
-            response = self.game.host(player_name)
-
-        player: Player = Player(
-            player_name, _id=connection_id, session_id=connection_id)
-        session: Session = Session('words', _id=connection_id, players=[player])
-
-        expected_response = ActionResponse('host', {'player': player.to_dict(
-        ), 'game': GameData(session).to_dict()})
-
-        self.assertEqual(response.action, expected_response.action)
-        self.assertEqual(response.data['player']['name'], player_name)
-        self.assertEqual(response.data['player']['id'], connection_id)
-        self.session_repository.save.assert_called_once()
-
-    def test_join_success(self):
-        connection_id = '67890'
-        self.game.set_connection_id(connection_id)
-        session = Session('words', _id='session_1', status=GameStatus.CREATED)
-        self.session_repository.get_by_name.return_value = session
-
-        response = self.game.join('words', 'Jane')
-
-        self.assertEqual(response.action, 'join')
-        self.assertEqual(response.data['name'], 'Jane')
-        self.assertEqual(response.data['id'], connection_id)
-        self.session_repository.save.assert_called_once()
-
-    def test_join_without_session(self):
-        connection_id = '12345'
-        self.game.set_connection_id(connection_id)
-        self.session_repository.get_by_name.side_effect = GameException(ErrorMessage.INEXISTENT_SESSION)
-
+    def assert_error(self, code, connection_id, type_, **payload):
         with self.assertRaises(GameException) as ctx:
-            self.game.join('session_id', 'John')
-        self.assertEqual(ctx.exception.message, ErrorMessage.INEXISTENT_SESSION.value)
+            self.send(connection_id, type_, **payload)
+        self.assertEqual(ctx.exception.code, code)
 
-    def test_join_with_started_session(self):
-        connection_id = '12345'
-        self.game.set_connection_id(connection_id)
-        session = Session('session_id', status=GameStatus.STARTED)
-        self.session_repository.get_by_name.return_value = session
+    def reset(self):
+        self.sessions.items.clear()
+        self.players.items.clear()
 
-        with self.assertRaises(GameException) as ctx:
-            self.game.join('session_id', 'John')
-        self.assertEqual(ctx.exception.message, ErrorMessage.GAME_STARTED.value)
+    def session(self):
+        (session_id,) = self.sessions.items
+        return self.sessions.get(session_id)
 
-    def _ready_session(self, host_id):
-        host = Player('Host', _id=host_id, session_id=host_id, status=PlayerStatus.READY)
-        guest = Player('Guest', _id='guest', session_id=host_id, status=PlayerStatus.READY)
-        return Session('words', _id=host_id, players=[host, guest])
+    def lobby(self, *guests):
+        reply = self.send('h', 'host', playerName='Host')
+        for guest in guests:
+            self.send(guest, 'join', roomName=reply.payload.game.name, playerName=guest.upper())
+        return reply.payload.game.name
 
-    def test_start_persists_config_and_sends_it_in_game_data(self):
-        self.game.set_connection_id('host_1')
-        self.game.word_list = ('palavra',)
-        session = self._ready_session('host_1')
-        self.session_repository.get.return_value = session
+    def playing(self, *guests, repetition=False):
+        self.lobby(*guests)
+        for connection_id in ('h', *guests):
+            self.send(connection_id, 'ready', ready=True)
+        self.send('h', 'start', config={'time': 3, 'repetition': repetition})
+        self.now += START_COUNTDOWN_MS
+        # The first word is WORD_LIST[0] via the patched random.choice.
+        return self.session()
 
-        response = self.game.start('5', 'false')
 
-        self.assertEqual(response.action, 'start')
+class TestLobby(GameTestCase):
+    def test_host_creates_room_and_replies_with_session(self):
+        reply = self.send('h', 'host', playerName='  Ana ')
+
+        self.assertIsInstance(reply, SessionMessage)
+        self.assertEqual(reply.request_id, 'req-host')
+        self.assertEqual(reply.payload.player.name, 'Ana')
+        self.assertEqual(reply.payload.player.id, 'h')
+        self.assertEqual(reply.payload.game.name, 'casas')
+        self.assertEqual(reply.payload.game.host_id, 'h')
+        self.assertEqual(reply.payload.game.status, 'lobby')
+        self.assertEqual(reply.payload.game.server_time, T0)
+
+    def test_join_normalizes_room_name_and_broadcasts(self):
+        self.lobby()
+
+        reply = self.send('g', 'join', roomName=' CASAS ', playerName='Bia')
+
+        self.assertEqual([p.id for p in reply.payload.game.players], ['h', 'g'])
+        self.assertEqual([p['name'] for p in self.gateway.last_state('h')['players']],
+                         ['Host', 'Bia'])
+        self.assertNotEqual(reply.payload.player.color, reply.payload.game.players[0].color)
+
+    def test_join_rejects_started_and_full_rooms(self):
+        self.lobby(*[f'g{i}' for i in range(7)])
+        self.assert_error('ROOM_FULL', 'late', 'join', roomName='casas', playerName='X')
+
+        self.reset()
+        self.playing('g')
+        self.assert_error('GAME_STARTED', 'late', 'join', roomName='casas', playerName='X')
+
+    def test_join_unknown_room(self):
+        self.assert_error('INEXISTENT_SESSION', 'g', 'join', roomName='nada', playerName='X')
+
+    def test_ready_toggles_status(self):
+        self.lobby('g')
+
+        reply = self.send('g', 'ready', ready=True)
+
+        self.assertIsInstance(reply, AckMessage)
+        self.assertEqual(self.session().find_player('g').status, PlayerStatus.READY)
+        self.send('g', 'ready', ready=False)
+        self.assertEqual(self.session().find_player('g').status, PlayerStatus.WAITING)
+
+    def test_only_host_starts_and_everyone_must_be_ready(self):
+        self.lobby('g')
+        self.send('h', 'ready', ready=True)
+
+        self.assert_error('NOT_HOST', 'g', 'start', config={'time': 3, 'repetition': True})
+        self.assert_error('ALL_PLAYERS_NEED_READY', 'h', 'start',
+                          config={'time': 3, 'repetition': True})
+
+    def test_start_persists_config_and_deadlines(self):
+        session = self.playing('g')
+
         self.assertEqual(session.status, GameStatus.STARTED)
-        self.assertEqual(session.config, GameConfig(time=5, repetition=False))
-        self.assertEqual(GameData(session).to_dict()['config'], {'time': 5, 'repetition': False})
-        self.session_repository.save.assert_called_once()
+        self.assertEqual((session.config.time, session.config.repetition), (3, False))
+        state = self.gateway.last_state('g')
+        self.assertEqual(state['status'], 'playing')
+        self.assertEqual(state['config'], {'time': 3, 'repetition': False})
+        self.assertEqual(state['startedAt'], T0 + START_COUNTDOWN_MS)
+        self.assertEqual(state['turnPlayerId'], 'h')
+        self.assertEqual(state['chain'], [{'word': 'casas', 'playerId': None}])
 
-    def test_start_rejects_invalid_config(self):
-        self.game.set_connection_id('host_1')
-        self.game.word_list = ('palavra',)
-        for time, repetition in [('0', 'true'), ('31', 'true'), ('abc', 'true'), ('3', 'maybe')]:
-            with self.subTest(time=time, repetition=repetition):
-                self.session_repository.get.return_value = self._ready_session('host_1')
-                with self.assertRaises(GameException) as ctx:
-                    self.game.start(time, repetition)
-                self.assertEqual(ctx.exception.code, ErrorMessage.INVALID_CONFIG.name)
 
-    def test_new_session_has_default_config(self):
-        session = Session('words')
-        self.assertEqual(session.config, GameConfig(time=3, repetition=True))
-        self.assertEqual(GameData(session).to_dict()['config'], {'time': 3, 'repetition': True})
+class TestTurns(GameTestCase):
+    def test_word_scores_appends_and_passes_turn(self):
+        session = self.playing('g')
+        session.chain[-1].word = 'casa'
+        self.sessions.save(session)
 
-    def _playing_session(self, repetition):
-        player = Player('John', _id='p1', session_id='s1', status=PlayerStatus.IN_GAME)
-        other = Player('Jane', _id='p2', session_id='s1', status=PlayerStatus.IN_GAME)
-        session = Session('words', _id='s1', players=[player, other], status=GameStatus.STARTED,
-                          chain=[Word('casa', 'p2'), Word('sapo', 'p2')],
-                          config=GameConfig(time=3, repetition=repetition))
-        self.game.set_connection_id('p1')
-        self.player_repository.get.return_value = player
-        self.session_repository.get.return_value = session
-        self.game.words = frozenset({'casa', 'sapo', 'pote'})
-        return session
+        reply = self.send('h', 'word', word=' SAPO ')
 
-    def test_repeated_word_rejected_when_repetition_disabled(self):
-        self._playing_session(repetition=False)
-
-        with self.assertRaises(GameException) as ctx:
-            self.game.word('casa')
-        self.assertEqual(ctx.exception.code, ErrorMessage.WORD_ALREADY_IN_GAME.name)
-
-    def test_repeated_word_accepted_when_repetition_enabled(self):
-        session = self._playing_session(repetition=True)
-        session.chain = [Word('sapo', 'p2'), Word('casa', 'p2')]
-
-        response = self.game.word('sapo')
-
-        self.assertEqual(response.action, 'word')
+        self.assertEqual((reply.payload.points, reply.payload.chain_points), (2, 0))
+        session = self.session()
         self.assertEqual(session.chain[-1].word, 'sapo')
+        self.assertEqual(session.chain[-1].player_id, 'h')
+        self.assertEqual(session.find_player('h').score, 2)
+        self.assertEqual(session.turn_player.id, 'g')
+        self.assertEqual(session.turn_deadline, self.now + TURN_MS)
 
-    def test_reconnect_success(self):
-        old_conn_id = 'old_123'
-        new_conn_id = 'new_456'
-        self.game.set_connection_id(new_conn_id)
+    def test_word_strips_accents(self):
+        session = self.playing('g')
+        session.chain[-1].word = 'sapo'
+        self.sessions.save(session)
 
-        old_player = Player('John', _id=old_conn_id, session_id='session_1', status=PlayerStatus.OFFLINE)
-        self.player_repository.get.return_value = old_player
+        self.send('h', 'word', word='Pôte')
 
-        session = Session('words', _id='session_1', players=[old_player], status=GameStatus.STARTED)
-        self.session_repository.get.return_value = session
+        self.assertEqual(self.session().chain[-1].word, 'pote')
 
-        response = self.game.reconnect(old_conn_id)
+    def test_word_errors(self):
+        self.playing('g')
+        self.assert_error('INVALID_TURN', 'g', 'word', word='sala')
+        self.assert_error('INEXISTENT_WORD', 'h', 'word', word='xyzw')
+        self.assert_error('NO_POINTS', 'h', 'word', word='livro')
 
-        self.assertEqual(response.action, 'reconnect')
-        self.assertEqual(response.data['player']['id'], new_conn_id)
-        self.assertEqual(response.data['player']['status'], PlayerStatus.IN_GAME)
-        self.player_repository.delete.assert_called_once_with(old_conn_id)
-        self.session_repository.save.assert_called_once()
+    def test_cannot_play_during_countdown_or_before_start(self):
+        self.lobby('g')
+        self.assert_error('GAME_NOT_STARTED', 'h', 'word', word='sala')
 
-    def test_reconnect_inexistent_player(self):
-        self.game.set_connection_id('new_456')
-        self.player_repository.get.side_effect = GameException(ErrorMessage.INEXISTENT_PLAYER)
+        self.reset()
+        self.playing('g')
+        self.now -= 1
+        self.assert_error('GAME_NOT_STARTED', 'h', 'word', word='sala')
 
-        with self.assertRaises(GameException) as ctx:
-            self.game.reconnect('old_123')
-        self.assertEqual(ctx.exception.message, ErrorMessage.INEXISTENT_PLAYER.value)
+    def test_repeated_word_passes_turn_when_repetition_is_off(self):
+        self.playing('g')
 
-    def test_disconnect(self):
-        conn_id = '12345'
-        self.game.set_connection_id(conn_id)
-        player = Player('John', _id=conn_id, session_id='session_1', status=PlayerStatus.IN_GAME)
-        self.player_repository.get.return_value = player
-        session = Session('words', _id='session_1', players=[player])
-        self.session_repository.get.return_value = session
+        self.assert_error('WORD_ALREADY_IN_GAME', 'h', 'word', word='casas')
 
-        self.game.disconnect()
+        self.assertEqual(self.session().turn_player.id, 'g')
 
-        self.assertEqual(player.status, PlayerStatus.OFFLINE)
-        self.session_repository.save.assert_called_once()
+    def test_repeated_word_allowed_when_repetition_is_on(self):
+        session = self.playing('g', repetition=True)
+        session.chain += [Word('saco', 'g'), Word('casa', 'g')]
+        self.sessions.save(session)
 
-    def test_end_game(self):
-        host_id = 'host_123'
-        self.game.set_connection_id(host_id)
-        host_player = Player('Host', _id=host_id, session_id='session_1')
-        self.player_repository.get.return_value = host_player
-        session = Session('words', _id='session_1', players=[host_player], status=GameStatus.STARTED)
-        self.session_repository.get.return_value = session
+        self.send('h', 'word', word='saco')
 
-        response = self.game.end_game()
+        self.assertEqual(self.session().chain[-1].word, 'saco')
 
-        self.assertEqual(response.action, 'end')
-        self.assertEqual(session.status, GameStatus.FINISHED)
-        self.session_repository.save.assert_called_once()
+    def test_pass_hands_turn_over(self):
+        self.playing('g')
 
-    def test_end_game_permission_denied(self):
-        host_id = 'host_123'
-        other_id = 'other_456'
-        self.game.set_connection_id(other_id)
-        host_player = Player('Host', _id=host_id, session_id='session_1')
-        other_player = Player('Other', _id=other_id, session_id='session_1')
-        self.player_repository.get.return_value = other_player
-        session = Session('words', _id='session_1', players=[host_player, other_player], status=GameStatus.STARTED)
-        self.session_repository.get.return_value = session
+        self.send('h', 'pass')
 
-        with self.assertRaises(GameException) as ctx:
-            self.game.end_game()
-        self.assertEqual(ctx.exception.message, ErrorMessage.END_GAME_PERMISSION.value)
+        self.assertEqual(self.session().turn_player.id, 'g')
+
+
+class TestDeadlines(GameTestCase):
+    def test_any_message_applies_an_expired_turn_first(self):
+        session = self.playing('g')
+        self.now = session.turn_deadline
+
+        # h's turn expired, so h's word arrives too late.
+        self.assert_error('INVALID_TURN', 'h', 'word', word='sala')
+
+        self.assertEqual(self.session().turn_player.id, 'g')
+        self.assertEqual(self.gateway.last_state('g')['turnPlayerId'], 'g')
+
+    def test_timeout_is_rejected_before_the_server_deadline(self):
+        session = self.playing('g')
+        self.now = session.turn_deadline - 1
+
+        self.assert_error('DEADLINE_NOT_REACHED', 'g', 'timeout')
+        self.assertEqual(self.session().turn_player.id, 'h')
+
+    def test_timeout_after_the_deadline_passes_the_turn(self):
+        session = self.playing('g')
+        self.now = session.turn_deadline
+
+        reply = self.send('g', 'timeout')
+
+        self.assertIsInstance(reply, AckMessage)
+        self.assertEqual(self.session().turn_player.id, 'g')
+
+    def test_timeout_after_ends_at_finishes_the_match(self):
+        session = self.playing('g')
+        self.now = session.ends_at
+
+        self.send('h', 'timeout')
+
+        self.assertEqual(self.session().status, GameStatus.FINISHED)
+        self.assertEqual(self.gateway.last_state('g')['status'], 'finished')
+        self.assert_error('GAME_FINISHED', 'h', 'word', word='sala')
+
+
+class TestConnections(GameTestCase):
+    def test_reconnect_moves_player_to_new_connection(self):
+        self.playing('g')
+
+        reply = self.send('g2', 'reconnect', playerId='g')
+
+        self.assertEqual(reply.payload.player.id, 'g2')
+        self.assertEqual(reply.payload.player.status, 'playing')
+        self.assertEqual([p.id for p in self.session().players], ['h', 'g2'])
+        self.assertNotIn('g', self.players.items)
+
+    def test_reconnect_unknown_player(self):
+        self.assert_error('INEXISTENT_PLAYER', 'x', 'reconnect', playerId='ghost')
+
+    def test_disconnect_marks_offline_and_tells_the_others(self):
+        self.playing('g')
+
+        self.game('g').disconnect()
+
+        self.assertEqual(self.session().find_player('g').status, PlayerStatus.OFFLINE)
+        self.assertEqual(self.gateway.last_state('h')['players'][1]['status'], 'offline')
+
+    def test_disconnect_of_unknown_connection_is_ignored(self):
+        self.game('nobody').disconnect()
+
+    def test_gone_connections_are_marked_offline(self):
+        self.playing('g', 'k')
+        self.gateway.gone.add('k')
+
+        self.send('h', 'pass')
+
+        self.assertEqual(self.session().find_player('k').status, PlayerStatus.OFFLINE)
+        self.assertEqual(self.gateway.last_state('h')['players'][2]['status'], 'offline')
+
+    def test_offline_players_get_no_broadcasts(self):
+        self.playing('g')
+        self.game('g').disconnect()
+        sent_before = len(self.gateway.messages_to('g'))
+
+        self.send('h', 'pass')
+
+        self.assertEqual(len(self.gateway.messages_to('g')), sent_before)
 
 
 if __name__ == '__main__':
