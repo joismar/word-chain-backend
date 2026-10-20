@@ -1,0 +1,2 @@
+pydantic>=2.9,<3
+aws-lambda-powertools[tracer]>=3,<4

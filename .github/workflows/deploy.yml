@@ -30,8 +30,12 @@ jobs:
 
       - name: Run tests
         working-directory: lambda
+        env:
+          POWERTOOLS_TRACE_DISABLED: '1'
+          POWERTOOLS_LOG_LEVEL: CRITICAL
         run: |
-          pip install boto3
+          pip install -r requirements-dev.txt
+          python -m protocol.export_schema --check
           python -m unittest discover -s tests -p '*_test.py'
 
   deploy:
@@ -61,6 +65,8 @@ jobs:
           # Copia os arquivos da Lambda para a pasta de build
           # Ignorando diretório de testes e arquivos temporários/configurações locais
           rsync -av --exclude='tests' \
+                    --exclude='.venv' \
+                    --exclude='requirements*.txt' \
                     --exclude='__pycache__' \
                     --exclude='*.pyc' \
                     --exclude='.pylintrc' \
