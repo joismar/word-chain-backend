@@ -10,9 +10,33 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
+env:
+  PYTHON_VERSION: '3.13'
+  LAMBDA_RUNTIME: python3.13
+
 jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run tests
+        working-directory: lambda
+        run: |
+          pip install boto3
+          python -m unittest discover -s tests -p '*_test.py'
+
   deploy:
     name: Build & Deploy Lambda
+    needs: test
     runs-on: ubuntu-latest
     environment: dev
 
@@ -23,7 +47,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Package Lambda Function
         run: |
@@ -70,5 +94,11 @@ jobs:
             --zip-file fileb://lambda_deployment.zip
           
           echo "Waiting for function update to complete..."
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+          echo "Setting runtime to $LAMBDA_RUNTIME..."
+          aws lambda update-function-configuration \
+            --function-name "$FUNCTION_NAME" \
+            --runtime "$LAMBDA_RUNTIME"
           aws lambda wait function-updated --function-name "$FUNCTION_NAME"
           echo "Deploy completed successfully!"
