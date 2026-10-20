@@ -4,7 +4,7 @@ from typing import Union
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from entities.session import GameStatus, Session, Word, GameMode
+from entities.session import GameConfig, GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
 from messages.messages_pt import ErrorMessage
@@ -13,6 +13,14 @@ from utils.errors import GameException
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('sessions')
+
+
+def _config_from_item(item) -> GameConfig:
+    # Sessions written before config existed fall back to the defaults.
+    config = item.get('config')
+    if not config:
+        return GameConfig()
+    return GameConfig(time=int(config['time']), repetition=bool(config['repetition']))
 
 
 class SessionRepository(ISessionRepository):
@@ -33,7 +41,7 @@ class SessionRepository(ISessionRepository):
                 turn_index=int(item['turn_index']),
                 chain=[Word(x['word'], x['player_id']) for x in item['chain']],
                 status=GameStatus(int(item['status'])),
-                game_mode=GameMode(int(item['game_mode'])),
+                config=_config_from_item(item),
                 started_at=item['started_at'],
             )
             return session
@@ -48,7 +56,7 @@ class SessionRepository(ISessionRepository):
             'chain': [item.to_dict() for item in session.chain],
             'status': session.status.value,
             'expires_in': int((datetime.now() + timedelta(hours=1)).timestamp()),
-            'game_mode': session.game_mode.value,
+            'config': session.config.to_dict(),
             'started_at': session.started_at,
         }
 
@@ -80,7 +88,7 @@ class SessionRepository(ISessionRepository):
                 chain=[Word(x['word'], x['player_id'])
                        for x in session_data.get('chain', [])],
                 status=GameStatus(int(session_data.get('status', 0))),
-                game_mode=GameMode(int(session_data.get('game_mode', 0))),
+                config=_config_from_item(session_data),
                 started_at=session_data.get('started_at', 0)
             )
             return session

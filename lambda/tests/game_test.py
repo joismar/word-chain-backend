@@ -2,11 +2,12 @@ import unittest
 from unittest.mock import MagicMock, mock_open, patch
 from entities.player import Player, PlayerStatus
 from entities.repository_manager import RepositoryManager
-from entities.session import GameStatus, Session
+from entities.session import GameConfig, GameStatus, Session, Word
 from messages.messages_pt import ErrorMessage
 from responses.action_response import ActionResponse
 from utils.errors import GameException
 from game import Game, GameData
+from utils import wordlist
 
 
 class TestGame(unittest.TestCase):
@@ -19,10 +20,21 @@ class TestGame(unittest.TestCase):
         self.game = Game(self.session_repository, self.player_repository, self.api_gateway)
 
     def test_load_words(self):
-        with patch('builtins.open', mock_open(read_data='word1\nword2\nword3')):
+        wordlist.clear_cache()
+        with patch('builtins.open', mock_open(read_data='casas\npao\n\nlivro\n')):
             self.game.load_words()
 
-        self.assertEqual(self.game.words, ['word1', 'word2', 'word3'])
+        self.assertEqual(self.game.words, frozenset({'casas', 'pao', 'livro'}))
+        self.assertEqual(set(self.game.word_list), {'casas', 'pao', 'livro'})
+        self.assertEqual(set(self.game.five_letters_words), {'casas', 'livro'})
+
+    def test_load_words_reads_file_once_per_container(self):
+        wordlist.clear_cache()
+        with patch('builtins.open', mock_open(read_data='casas\nlivro')) as opened:
+            self.game.load_words()
+            Game(self.session_repository, self.player_repository).load_words()
+
+        opened.assert_called_once()
 
     def test_set_connection_id(self):
         connection_id = '12345'
@@ -81,6 +93,68 @@ class TestGame(unittest.TestCase):
         with self.assertRaises(GameException) as ctx:
             self.game.join('session_id', 'John')
         self.assertEqual(ctx.exception.message, ErrorMessage.GAME_STARTED.value)
+
+    def _ready_session(self, host_id):
+        host = Player('Host', _id=host_id, session_id=host_id, status=PlayerStatus.READY)
+        guest = Player('Guest', _id='guest', session_id=host_id, status=PlayerStatus.READY)
+        return Session('words', _id=host_id, players=[host, guest])
+
+    def test_start_persists_config_and_sends_it_in_game_data(self):
+        self.game.set_connection_id('host_1')
+        self.game.word_list = ('palavra',)
+        session = self._ready_session('host_1')
+        self.session_repository.get.return_value = session
+
+        response = self.game.start('5', 'false')
+
+        self.assertEqual(response.action, 'start')
+        self.assertEqual(session.status, GameStatus.STARTED)
+        self.assertEqual(session.config, GameConfig(time=5, repetition=False))
+        self.assertEqual(GameData(session).to_dict()['config'], {'time': 5, 'repetition': False})
+        self.session_repository.save.assert_called_once()
+
+    def test_start_rejects_invalid_config(self):
+        self.game.set_connection_id('host_1')
+        self.game.word_list = ('palavra',)
+        for time, repetition in [('0', 'true'), ('31', 'true'), ('abc', 'true'), ('3', 'maybe')]:
+            with self.subTest(time=time, repetition=repetition):
+                self.session_repository.get.return_value = self._ready_session('host_1')
+                with self.assertRaises(GameException) as ctx:
+                    self.game.start(time, repetition)
+                self.assertEqual(ctx.exception.code, ErrorMessage.INVALID_CONFIG.name)
+
+    def test_new_session_has_default_config(self):
+        session = Session('words')
+        self.assertEqual(session.config, GameConfig(time=3, repetition=True))
+        self.assertEqual(GameData(session).to_dict()['config'], {'time': 3, 'repetition': True})
+
+    def _playing_session(self, repetition):
+        player = Player('John', _id='p1', session_id='s1', status=PlayerStatus.IN_GAME)
+        other = Player('Jane', _id='p2', session_id='s1', status=PlayerStatus.IN_GAME)
+        session = Session('words', _id='s1', players=[player, other], status=GameStatus.STARTED,
+                          chain=[Word('casa', 'p2'), Word('sapo', 'p2')],
+                          config=GameConfig(time=3, repetition=repetition))
+        self.game.set_connection_id('p1')
+        self.player_repository.get.return_value = player
+        self.session_repository.get.return_value = session
+        self.game.words = frozenset({'casa', 'sapo', 'pote'})
+        return session
+
+    def test_repeated_word_rejected_when_repetition_disabled(self):
+        self._playing_session(repetition=False)
+
+        with self.assertRaises(GameException) as ctx:
+            self.game.word('casa')
+        self.assertEqual(ctx.exception.code, ErrorMessage.WORD_ALREADY_IN_GAME.name)
+
+    def test_repeated_word_accepted_when_repetition_enabled(self):
+        session = self._playing_session(repetition=True)
+        session.chain = [Word('sapo', 'p2'), Word('casa', 'p2')]
+
+        response = self.game.word('sapo')
+
+        self.assertEqual(response.action, 'word')
+        self.assertEqual(session.chain[-1].word, 'sapo')
 
     def test_reconnect_success(self):
         old_conn_id = 'old_123'

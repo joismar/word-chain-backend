@@ -1,17 +1,20 @@
 from datetime import datetime, timedelta
 import json
-import os
 import random
 from typing import List
 
 from entities.player import Player, PlayerColor, PlayerStatus
-from entities.session import GameMode, GameStatus, Session, Word
+from entities.session import GameConfig, GameStatus, Session, Word
 from interfaces.player_repository_interface import IPlayerRepository
 from interfaces.session_repository_interface import ISessionRepository
 from messages.messages_pt import ErrorMessage, Message
 from responses.action_response import ActionResponse
 from utils.calculate_score import calculate_score
 from utils.errors import GameException
+from utils import wordlist
+
+MIN_GAME_MINUTES = 1
+MAX_GAME_MINUTES = 30
 
 
 class GameData:
@@ -22,6 +25,7 @@ class GameData:
         self.turn = session.turn_index
         self.name = session.name
         self.started_at = session.started_at
+        self.config = session.config.to_dict()
 
     def to_dict(self):
         return self.__dict__
@@ -35,15 +39,12 @@ class Game:
         self.player_repository: IPlayerRepository = player_repository
         self.apigateway_management_api = apigateway_management_api
         self.words = None
+        self.word_list = None
         self.five_letters_words = None
         self.connection_id = None
 
     def load_words(self):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        wordlist_path = os.path.join(current_dir, 'wordlist.txt')
-        with open(wordlist_path, 'r', encoding='utf-8') as f:
-            self.words = f.read().split('\n')
-            self.five_letters_words = [w for w in self.words if len(w) == 5]
+        self.words, self.word_list, self.five_letters_words = wordlist.load()
 
     def set_connection_id(self, connection_id: str):
         self.connection_id = connection_id
@@ -134,7 +135,8 @@ class Game:
 
         return ActionResponse('status', {'success': True})
 
-    def start(self, mode: GameMode):
+    def start(self, time: str, repetition: str):
+        config = self.__parse_config(time, repetition)
         session: Session = self.session_repository.get(self.connection_id)
 
         if not self.__ready_to_start(session):
@@ -144,8 +146,8 @@ class Game:
             player.status = PlayerStatus.IN_GAME
 
         session.status = GameStatus.STARTED
-        session.chain.append(Word(random.choice(self.words), player.id))
-        session.game_mode = GameMode(int(mode))
+        session.chain.append(Word(random.choice(self.word_list), player.id))
+        session.config = config
         session.started_at = int(
             (datetime.now() + timedelta(seconds=5)).timestamp())
         session.save()
@@ -188,7 +190,7 @@ class Game:
             raise GameException(ErrorMessage.INEXISTENT_WORD)
 
         word_list = [item.word for item in session.chain]
-        if word in word_list:
+        if word in word_list and not session.config.repetition:
             session.swap_turn()
             session.save()
             self.__broadcast(
@@ -303,6 +305,18 @@ class Game:
                 )
             except Exception:
                 pass
+
+    @staticmethod
+    def __parse_config(time: str, repetition: str) -> GameConfig:
+        try:
+            minutes = int(time)
+        except (TypeError, ValueError):
+            raise GameException(ErrorMessage.INVALID_CONFIG)
+        if not MIN_GAME_MINUTES <= minutes <= MAX_GAME_MINUTES:
+            raise GameException(ErrorMessage.INVALID_CONFIG)
+        if repetition not in ('true', 'false'):
+            raise GameException(ErrorMessage.INVALID_CONFIG)
+        return GameConfig(time=minutes, repetition=repetition == 'true')
 
     def __ready_to_start(self, session: Session):
         return all(x.status == PlayerStatus.READY for x in

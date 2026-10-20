@@ -1,3 +1,4 @@
+from dataclasses import asdict, dataclass
 from enum import Enum
 import uuid
 from entities.player import Player, PlayerStatus
@@ -10,9 +11,13 @@ class GameStatus(int, Enum):
     FINISHED = 2
 
 
-class GameMode(int, Enum):
-    TIME = 0
-    REPETITION = 1
+@dataclass(frozen=True)
+class GameConfig:
+    time: int = 3
+    repetition: bool = True
+
+    def to_dict(self):
+        return asdict(self)
 
 
 class Word:
@@ -27,7 +32,7 @@ class Word:
 class Session:
     def __init__(
             self, name: str, _id=None, players=None, turn_index=0, chain=None,
-            status=GameStatus.CREATED, game_mode=GameMode.TIME, started_at=None):
+            status=GameStatus.CREATED, config=None, started_at=None):
 
         if players is None:
             players = []
@@ -40,7 +45,7 @@ class Session:
         self.turn_index: int = turn_index
         self.chain: list[Word] = chain
         self.status: GameStatus = status
-        self.game_mode: GameMode = game_mode
+        self.config: GameConfig = config or GameConfig()
         self.started_at: int = started_at
 
     @property
@@ -57,13 +62,10 @@ class Session:
             self.swap_turn()
 
     def to_dict(self):
-        old_players = self.players
-        old_chain = self.chain
-        self.players = [x.to_dict() for x in self.players]
-        self.chain = [x.to_dict() for x in self.chain]
         new_dict = self.__dict__.copy()
-        self.players = old_players
-        self.chain = old_chain
+        new_dict['players'] = [x.to_dict() for x in self.players]
+        new_dict['chain'] = [x.to_dict() for x in self.chain]
+        new_dict['config'] = self.config.to_dict()
         return new_dict
 
     def find_player(self, player_id: str):

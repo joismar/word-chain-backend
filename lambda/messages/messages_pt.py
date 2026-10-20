@@ -16,3 +16,4 @@ class ErrorMessage(str, Enum):
     NO_POINTS = "A palavra não formou pontos."
     GAME_STARTED = "Não é permitido entrar em um jogo em execução."
     END_GAME_PERMISSION = "Apenas o jogador que criou o jogo pode finalizá-lo."
+    INVALID_CONFIG = "Configuração da partida inválida."
