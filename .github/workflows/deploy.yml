@@ -65,6 +65,7 @@ jobs:
           # Copia os arquivos da Lambda para a pasta de build
           # Ignorando diretório de testes e arquivos temporários/configurações locais
           rsync -av --exclude='tests' \
+                    --exclude='local' \
                     --exclude='.venv' \
                     --exclude='requirements*.txt' \
                     --exclude='__pycache__' \
