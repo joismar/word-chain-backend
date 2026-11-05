@@ -1,0 +1,5 @@
+pydantic>=2.9,<3
+aws-lambda-powertools[tracer]>=3,<4
+# aws-xray-sdk pulls botocore into the zip, shadowing the runtime's; ship the
+# matching boto3 too so the pair stays compatible.
+boto3

@@ -1,0 +1,911 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AckMessage": {
+      "additionalProperties": false,
+      "description": "Reply to ready, start, word, pass and timeout.",
+      "properties": {
+        "v": {
+          "const": 2,
+          "default": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "ack",
+          "default": "ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AckPayload"
+        }
+      },
+      "required": [
+        "v",
+        "type",
+        "requestId",
+        "payload"
+      ],
+      "title": "AckMessage",
+      "type": "object"
+    },
+    "AckPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "points": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only on word",
+          "title": "Points"
+        },
+        "chainPoints": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only on word",
+          "title": "Chainpoints"
+        }
+      },
+      "required": [
+        "points",
+        "chainPoints"
+      ],
+      "title": "AckPayload",
+      "type": "object"
+    },
+    "ChainWord": {
+      "additionalProperties": false,
+      "properties": {
+        "word": {
+          "title": "Word",
+          "type": "string"
+        },
+        "playerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null for the word the server seeds the chain with",
+          "title": "Playerid"
+        }
+      },
+      "required": [
+        "word",
+        "playerId"
+      ],
+      "title": "ChainWord",
+      "type": "object"
+    },
+    "EmptyPayload": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "EmptyPayload",
+      "type": "object"
+    },
+    "ErrorPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "INEXISTENT_SESSION",
+            "INEXISTENT_PLAYER",
+            "ALL_PLAYERS_NEED_READY",
+            "INVALID_TURN",
+            "INEXISTENT_WORD",
+            "WORD_ALREADY_IN_GAME",
+            "NO_POINTS",
+            "GAME_STARTED",
+            "NOT_HOST",
+            "ROOM_FULL",
+            "GAME_NOT_STARTED",
+            "GAME_FINISHED",
+            "DEADLINE_NOT_REACHED",
+            "INVALID_MESSAGE",
+            "UNSUPPORTED_VERSION",
+            "CONCURRENT_UPDATE",
+            "INTERNAL_ERROR"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "description": "Human-readable, pt-BR",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorPayload",
+      "type": "object"
+    },
+    "ErrorReply": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "default": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "requestId": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when the request could not be parsed",
+          "title": "Requestid"
+        },
+        "payload": {
+          "$ref": "#/$defs/ErrorPayload"
+        }
+      },
+      "required": [
+        "v",
+        "type",
+        "requestId",
+        "payload"
+      ],
+      "title": "ErrorReply",
+      "type": "object"
+    },
+    "GameConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "time": {
+          "description": "Match length in minutes",
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Time",
+          "type": "integer"
+        },
+        "repetition": {
+          "description": "Whether a word may be played again",
+          "title": "Repetition",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "time",
+        "repetition"
+      ],
+      "title": "GameConfig",
+      "type": "object"
+    },
+    "GameState": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Room code players type to join",
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "lobby",
+            "playing",
+            "finished"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "players": {
+          "description": "In turn order; the first one is the host",
+          "items": {
+            "$ref": "#/$defs/Player"
+          },
+          "title": "Players",
+          "type": "array"
+        },
+        "chain": {
+          "items": {
+            "$ref": "#/$defs/ChainWord"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "hostId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hostid"
+        },
+        "turnPlayerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Turnplayerid"
+        },
+        "config": {
+          "$ref": "#/$defs/GameConfig"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "description": "Unix time in milliseconds",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When play begins (after the start countdown)",
+          "title": "Startedat"
+        },
+        "endsAt": {
+          "anyOf": [
+            {
+              "description": "Unix time in milliseconds",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Endsat"
+        },
+        "turnDeadline": {
+          "anyOf": [
+            {
+              "description": "Unix time in milliseconds",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when there is no turn timer (single active player)",
+          "title": "Turndeadline"
+        },
+        "serverTime": {
+          "description": "Server clock when this state was sent, to offset local timers",
+          "minimum": 0,
+          "title": "Servertime",
+          "type": "integer"
+        },
+        "version": {
+          "minimum": 0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "players",
+        "chain",
+        "hostId",
+        "turnPlayerId",
+        "config",
+        "startedAt",
+        "endsAt",
+        "turnDeadline",
+        "serverTime",
+        "version"
+      ],
+      "title": "GameState",
+      "type": "object"
+    },
+    "GameStateMessage": {
+      "additionalProperties": false,
+      "description": "Broadcast to every player in the room whenever the game changes.",
+      "properties": {
+        "v": {
+          "const": 2,
+          "default": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "game_state",
+          "default": "game_state",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/GameState"
+        }
+      },
+      "required": [
+        "v",
+        "type",
+        "payload"
+      ],
+      "title": "GameStateMessage",
+      "type": "object"
+    },
+    "HostMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "host",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/HostPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "HostMessage",
+      "type": "object"
+    },
+    "HostPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "playerName": {
+          "maxLength": 20,
+          "minLength": 1,
+          "title": "Playername",
+          "type": "string"
+        }
+      },
+      "required": [
+        "playerName"
+      ],
+      "title": "HostPayload",
+      "type": "object"
+    },
+    "JoinMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "join",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/JoinPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "JoinMessage",
+      "type": "object"
+    },
+    "JoinPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "roomName": {
+          "maxLength": 20,
+          "minLength": 1,
+          "title": "Roomname",
+          "type": "string"
+        },
+        "playerName": {
+          "maxLength": 20,
+          "minLength": 1,
+          "title": "Playername",
+          "type": "string"
+        }
+      },
+      "required": [
+        "roomName",
+        "playerName"
+      ],
+      "title": "JoinPayload",
+      "type": "object"
+    },
+    "PassMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "pass",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/EmptyPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "PassMessage",
+      "type": "object"
+    },
+    "Player": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "waiting",
+            "ready",
+            "playing",
+            "offline"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "enum": [
+                "red",
+                "blue",
+                "green",
+                "yellow",
+                "purple",
+                "orange",
+                "pink",
+                "brown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Color"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "score",
+        "status",
+        "color"
+      ],
+      "title": "Player",
+      "type": "object"
+    },
+    "ReadyMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "ready",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ReadyPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "ReadyMessage",
+      "type": "object"
+    },
+    "ReadyPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "ready": {
+          "title": "Ready",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ready"
+      ],
+      "title": "ReadyPayload",
+      "type": "object"
+    },
+    "ReconnectMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "reconnect",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ReconnectPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "ReconnectMessage",
+      "type": "object"
+    },
+    "ReconnectPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "playerId": {
+          "minLength": 1,
+          "title": "Playerid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "playerId"
+      ],
+      "title": "ReconnectPayload",
+      "type": "object"
+    },
+    "SessionMessage": {
+      "additionalProperties": false,
+      "description": "Reply to host, join and reconnect.",
+      "properties": {
+        "v": {
+          "const": 2,
+          "default": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "type": {
+          "const": "session",
+          "default": "session",
+          "title": "Type",
+          "type": "string"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionPayload"
+        }
+      },
+      "required": [
+        "v",
+        "type",
+        "requestId",
+        "payload"
+      ],
+      "title": "SessionMessage",
+      "type": "object"
+    },
+    "SessionPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "player": {
+          "$ref": "#/$defs/Player",
+          "description": "The player this connection controls"
+        },
+        "game": {
+          "$ref": "#/$defs/GameState"
+        }
+      },
+      "required": [
+        "player",
+        "game"
+      ],
+      "title": "SessionPayload",
+      "type": "object"
+    },
+    "StartMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "start",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/StartPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "StartMessage",
+      "type": "object"
+    },
+    "StartPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/GameConfig"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "title": "StartPayload",
+      "type": "object"
+    },
+    "TimeoutMessage": {
+      "additionalProperties": false,
+      "description": "Sent when a deadline expires locally. Accepted only if it expired on the server too.",
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "timeout",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/EmptyPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "TimeoutMessage",
+      "type": "object"
+    },
+    "WordMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 2,
+          "title": "V",
+          "type": "integer"
+        },
+        "requestId": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requestid",
+          "type": "string"
+        },
+        "type": {
+          "const": "word",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/WordPayload"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "type",
+        "payload"
+      ],
+      "title": "WordMessage",
+      "type": "object"
+    },
+    "WordPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "word": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Word",
+          "type": "string"
+        }
+      },
+      "required": [
+        "word"
+      ],
+      "title": "WordPayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Wrapper used only to export both directions into one JSON Schema.",
+  "properties": {
+    "client": {
+      "discriminator": {
+        "mapping": {
+          "host": "#/$defs/HostMessage",
+          "join": "#/$defs/JoinMessage",
+          "pass": "#/$defs/PassMessage",
+          "ready": "#/$defs/ReadyMessage",
+          "reconnect": "#/$defs/ReconnectMessage",
+          "start": "#/$defs/StartMessage",
+          "timeout": "#/$defs/TimeoutMessage",
+          "word": "#/$defs/WordMessage"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HostMessage"
+        },
+        {
+          "$ref": "#/$defs/JoinMessage"
+        },
+        {
+          "$ref": "#/$defs/ReadyMessage"
+        },
+        {
+          "$ref": "#/$defs/StartMessage"
+        },
+        {
+          "$ref": "#/$defs/WordMessage"
+        },
+        {
+          "$ref": "#/$defs/PassMessage"
+        },
+        {
+          "$ref": "#/$defs/TimeoutMessage"
+        },
+        {
+          "$ref": "#/$defs/ReconnectMessage"
+        }
+      ],
+      "title": "Client"
+    },
+    "server": {
+      "discriminator": {
+        "mapping": {
+          "ack": "#/$defs/AckMessage",
+          "error": "#/$defs/ErrorReply",
+          "game_state": "#/$defs/GameStateMessage",
+          "session": "#/$defs/SessionMessage"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SessionMessage"
+        },
+        {
+          "$ref": "#/$defs/AckMessage"
+        },
+        {
+          "$ref": "#/$defs/ErrorReply"
+        },
+        {
+          "$ref": "#/$defs/GameStateMessage"
+        }
+      ],
+      "title": "Server"
+    }
+  },
+  "required": [
+    "client",
+    "server"
+  ],
+  "title": "Word Chain protocol v2",
+  "type": "object"
+}
