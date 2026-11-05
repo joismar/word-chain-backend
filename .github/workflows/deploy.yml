@@ -1,5 +1,7 @@
-name: Deploy to AWS Lambda
+name: Deploy
 
+# dev branch -> stack word-chain-dev, main branch -> stack word-chain-prod.
+# AWS access comes from GitHub OIDC (infra/github-oidc.yaml); no stored keys.
 on:
   push:
     branches:
@@ -7,12 +9,14 @@ on:
       - dev
     paths:
       - 'lambda/**'
+      - 'template.yaml'
+      - 'samconfig.toml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 env:
   PYTHON_VERSION: '3.13'
-  LAMBDA_RUNTIME: python3.13
+  STAGE: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
 
 jobs:
   test:
@@ -39,10 +43,16 @@ jobs:
           python -m unittest discover -s tests -p '*_test.py'
 
   deploy:
-    name: Build & Deploy Lambda
+    name: SAM deploy
     needs: test
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    concurrency:
+      group: deploy-${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout Code
@@ -53,59 +63,33 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Package Lambda Function
-        run: |
-          mkdir -p build
-          
-          # Se houver requirements.txt, instala as dependências na pasta de build
-          if [ -f lambda/requirements.txt ]; then
-            pip install --target build -r lambda/requirements.txt
-          fi
-          
-          # Copia os arquivos da Lambda para a pasta de build
-          # Ignorando diretório de testes e arquivos temporários/configurações locais
-          rsync -av --exclude='tests' \
-                    --exclude='local' \
-                    --exclude='.venv' \
-                    --exclude='requirements*.txt' \
-                    --exclude='__pycache__' \
-                    --exclude='*.pyc' \
-                    --exclude='.pylintrc' \
-                    --exclude='.python-version' \
-                    lambda/ build/
-          
-          # Gera o arquivo zip para deploy
-          cd build
-          zip -r ../lambda_deployment.zip .
-          cd ..
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'sa-east-1' }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'sa-east-1' }}
 
-      - name: Deploy Code to AWS Lambda
-        env:
-          FUNCTION_NAME: ${{ secrets.AWS_LAMBDA_FUNCTION_NAME }}
+      - name: Validate template
+        run: sam validate --lint
+
+      - name: Build
+        run: sam build
+
+      - name: Deploy
         run: |
-          if [ -z "$FUNCTION_NAME" ]; then
-            echo "Error: AWS_LAMBDA_FUNCTION_NAME secret is not set."
-            exit 1
-          fi
-          
-          echo "Updating Lambda function: $FUNCTION_NAME..."
-          aws lambda update-function-code \
-            --function-name "$FUNCTION_NAME" \
-            --zip-file fileb://lambda_deployment.zip
-          
-          echo "Waiting for function update to complete..."
-          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+          sam deploy \
+            --config-env "$STAGE" \
+            --role-arn "${{ vars.AWS_CFN_EXEC_ROLE_ARN }}" \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
 
-          echo "Setting runtime to $LAMBDA_RUNTIME..."
-          aws lambda update-function-configuration \
-            --function-name "$FUNCTION_NAME" \
-            --runtime "$LAMBDA_RUNTIME"
-          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
-          echo "Deploy completed successfully!"
+      - name: Show WebSocket URL
+        run: |
+          aws cloudformation describe-stacks --stack-name "word-chain-$STAGE" \
+            --query "Stacks[0].Outputs[?OutputKey=='WebSocketUrl'].OutputValue" \
+            --output text

@@ -2,7 +2,7 @@
 
 Servidor do jogo multiplayer de corrente de palavras (pt-BR): AWS API Gateway WebSocket → uma Lambda Python 3.13 → DynamoDB. O front (React + PixiJS) fica em `../word-chain-client`.
 
-**Plano e fases:** `docs/backend-plan.md` é a fonte da verdade do backend (B1 e B2 concluídas; próxima: B3, infraestrutura como código). O plano do front fica em `../word-chain-client/docs/refactor-plan.md`.
+**Plano e fases:** `docs/backend-plan.md` é a fonte da verdade do backend (B1 e B2 concluídas; B3, infraestrutura como código com SAM, em andamento: `docs/b3-infra.md`). O plano do front fica em `../word-chain-client/docs/refactor-plan.md`.
 
 ## Comandos
 
@@ -30,7 +30,7 @@ No Windows, o Python do venv é `.venv/Scripts/python`. Nos testes, `POWERTOOLS_
 - `game.py`: `Game` trata uma mensagem de uma conexão num instante (`now`). Recarrega o estado a cada chamada (por isso pode ser repetido) e aplica os prazos antes de tudo.
 - `entities/`: `Session` (status, corrente, `config`, `ends_at`, `turn_deadline`, `version`) e `Player`. Os prazos vencidos são aplicados em `Session.apply_deadlines`, encadeando do prazo expirado, não de `now`. Turno de 15 s (`TURN_MS`).
 - `protocol/`: `models.py` (envelope e mensagens), `mapping.py` (entidades → visão do cliente), `export_schema.py`.
-- `repository/`: DynamoDB. Tabelas `sessions` (GSI `name-index`) e `players` (GSI `session_id-index`), ambas com TTL em `expires_in`. Escrita condicional por `version` (`ConditionExpression`) contra jogadas simultâneas; conflito vira `ConcurrentUpdateError`.
+- `repository/`: DynamoDB. Tabelas `sessions` (GSI `name-index`) e `players` (GSI `session_id-index`), ambas com TTL em `expires_in`. Na AWS os nomes vêm de `SESSIONS_TABLE`/`PLAYERS_TABLE` (`word-chain-<stage>-…`); sem as variáveis, `sessions`/`players`. Escrita condicional por `version` (`ConditionExpression`) contra jogadas simultâneas; conflito vira `ConcurrentUpdateError`.
 - `api_gateway_service.py`: envio e broadcast em paralelo pela management API. O broadcast devolve as conexões que sumiram (`GoneException`) e o `Game` marca esses jogadores como `offline`. Endpoint em `API_GATEWAY_URL`.
 - `utils/wordlist.py`: `wordlist.txt` (537 mil linhas) lido uma vez por container, em `frozenset`.
 - `local/`: `server.py` (WebSocket local com `websockets`, roda o `GameApplication` real) e `memory.py` (repositórios em memória, também usados pelos testes via `tests/fakes.py`).
@@ -43,7 +43,15 @@ No Windows, o Python do venv é `.venv/Scripts/python`. Nos testes, `POWERTOOLS_
 
 ## Deploy
 
-`.github/workflows/deploy.yml`: em push para `main` ou `dev` (só com mudanças em `lambda/**`), roda `export_schema --check` e os testes, empacota `lambda/` com as dependências de `requirements.txt` (sem `tests/` nem `local/`) e atualiza o código da Lambda (`aws lambda update-function-code`). Hoje usa access keys nos secrets; API Gateway e tabelas não estão versionados (é a B3).
+Infraestrutura em SAM: `template.yaml` (API WebSocket, Lambda, tabelas) com o parâmetro `Stage`, `samconfig.toml` com `[dev]` e `[prod]` (stacks `word-chain-dev`/`word-chain-prod`, `sa-east-1`). Na raiz:
+
+```bash
+sam validate --lint
+sam build
+sam deploy --config-env dev    # o output WebSocketUrl é o VITE_WS_URL do front
+```
+
+`.github/workflows/deploy.yml`: em push para `dev` (→ `dev`) ou `main` (→ `prod`), com mudanças em `lambda/**`, `template.yaml` ou `samconfig.toml`, roda `export_schema --check` e os testes, depois `sam build` e `sam deploy`. Credenciais por OIDC (`infra/github-oidc.yaml`, aplicado uma vez à mão), com os ARNs em variables dos environments do GitHub. Passo a passo e desenho em `docs/b3-infra.md`.
 
 ## Convenções
 

@@ -3,3 +3,4 @@ lambda_function
 __pycache__
 *.pyc
 .venv
+.aws-sam

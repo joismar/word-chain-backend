@@ -1,0 +1,179 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Word Chain backend - API Gateway WebSocket, one Lambda, two DynamoDB tables.
+
+Parameters:
+  Stage:
+    Type: String
+    AllowedValues: [dev, prod]
+    Description: Environment name; also the WebSocket stage (wss://.../<Stage>).
+  ThrottlingRateLimit:
+    Type: Number
+    Default: 50
+    Description: Steady-state messages per second across the stage (cost guard).
+  ThrottlingBurstLimit:
+    Type: Number
+    Default: 100
+
+Resources:
+  # Both tables hold match state only; items expire after an hour (expires_in).
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub word-chain-${Stage}-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: name-index
+          KeySchema:
+            - AttributeName: name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expires_in
+        Enabled: true
+
+  PlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub word-chain-${Stage}-players
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: session_id-index
+          KeySchema:
+            - AttributeName: session_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expires_in
+        Enabled: true
+
+  GameLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/word-chain-${Stage}
+      RetentionInDays: 14
+
+  GameFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub word-chain-${Stage}
+      CodeUri: lambda/
+      Handler: main.main
+      Runtime: python3.13
+      Architectures: [x86_64]
+      # The wordlist frozenset (537k words) lives in memory; more memory also
+      # means more CPU for the cold start that builds it.
+      MemorySize: 512
+      Timeout: 10
+      Tracing: Active
+      LoggingConfig:
+        LogGroup: !Ref GameLogGroup
+      Environment:
+        Variables:
+          SESSIONS_TABLE: !Ref SessionsTable
+          PLAYERS_TABLE: !Ref PlayersTable
+          API_GATEWAY_URL: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Stage}
+          POWERTOOLS_LOG_LEVEL: INFO
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PlayersTable
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${Stage}/POST/@connections/*
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub word-chain-${Stage}
+      ProtocolType: WEBSOCKET
+      # Every message goes to $default; the envelope's "type" picks the handler.
+      RouteSelectionExpression: $request.body.action
+
+  GameIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GameFunction.Arn}/invocations
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${GameIntegration}
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${GameIntegration}
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target: !Sub integrations/${GameIntegration}
+
+  # A deployment is a snapshot of the routes: if routes or the integration
+  # change, rename this resource (e.g. Deployment2) so a new one is created.
+  Deployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn: [ConnectRoute, DisconnectRoute, DefaultRoute]
+    Properties:
+      ApiId: !Ref WebSocketApi
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: !Ref Stage
+      DeploymentId: !Ref Deployment
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ThrottlingRateLimit
+        ThrottlingBurstLimit: !Ref ThrottlingBurstLimit
+
+  GameFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GameFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+
+Outputs:
+  WebSocketUrl:
+    Description: VITE_WS_URL / E2E_WS_URL for the client.
+    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Stage}
+  FunctionName:
+    Value: !Ref GameFunction
+  SessionsTableName:
+    Value: !Ref SessionsTable
+  PlayersTableName:
+    Value: !Ref PlayersTable

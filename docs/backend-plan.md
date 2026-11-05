@@ -36,12 +36,16 @@ Bugs do backend encontrados na leitura do código, todos resolvidos em B1 e B2:
 
 ### B3 — Infraestrutura como código
 
-- [ ] Versionar API Gateway WebSocket, Lambda, tabelas `sessions`/`players` + GSIs `name-index` e `session_id-index` e TTL em `expires_in` (SAM ou CDK, **decisão pendente**)
-- [ ] Ambientes `dev`/`prod`; deploy via OIDC do GitHub (sem access keys fixas nos secrets)
+Desenho e passo a passo: `docs/b3-infra.md`.
+
+- [x] Versionar API Gateway WebSocket, Lambda, tabelas `sessions`/`players` + GSIs `name-index` e `session_id-index` e TTL em `expires_in` (**SAM**, decidido em 2026-11-05: `template.yaml`)
+- [x] Ambientes `dev`/`prod` (`samconfig.toml`); deploy via OIDC do GitHub (`infra/github-oidc.yaml`)
+- [ ] Primeiro deploy de `dev` e `prod`, bootstrap do OIDC, variables nos environments do GitHub
+- [ ] Front apontando para a URL nova; infraestrutura manual antiga apagada; access keys antigas removidas
 
 ---
 
 ## 2. Decisões pendentes
 
-1. IaC: SAM ou CDK.
+1. ~~IaC: SAM ou CDK.~~ SAM (2026-11-05).
 2. O backend continua em Python ou migra para TypeScript (Node 22) para compartilhar tipos diretamente com o front. A recomendação atual é **Python + JSON Schema**, por ser a menor ruptura.

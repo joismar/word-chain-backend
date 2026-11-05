@@ -1,0 +1,31 @@
+# sam build                     -> builds lambda/ into .aws-sam/
+# sam deploy --config-env dev   -> stack word-chain-dev
+# sam deploy --config-env prod  -> stack word-chain-prod
+version = 0.1
+
+[default.global.parameters]
+region = "sa-east-1"
+
+[default.build.parameters]
+cached = true
+
+[default.validate.parameters]
+lint = true
+
+[dev.deploy.parameters]
+stack_name = "word-chain-dev"
+region = "sa-east-1"
+resolve_s3 = true
+s3_prefix = "word-chain-dev"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Stage=dev"
+confirm_changeset = true
+
+[prod.deploy.parameters]
+stack_name = "word-chain-prod"
+region = "sa-east-1"
+resolve_s3 = true
+s3_prefix = "word-chain-prod"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Stage=prod"
+confirm_changeset = true
