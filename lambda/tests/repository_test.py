@@ -1,5 +1,6 @@
 import os
 import unittest
+import unittest.mock
 
 os.environ.setdefault('AWS_DEFAULT_REGION', 'sa-east-1')
 os.environ.setdefault('AWS_ACCESS_KEY_ID', 'testing')
@@ -128,6 +129,35 @@ class TestSessionRepository(unittest.TestCase):
             with self.assertRaises(GameException) as ctx:
                 lookup()
             self.assertEqual(ctx.exception.code, 'INEXISTENT_SESSION')
+
+
+class TestTableNames(unittest.TestCase):
+    def setUp(self):
+        self.mock = mock_aws()
+        self.mock.start()
+
+    def tearDown(self):
+        self.mock.stop()
+
+    def test_defaults_to_the_legacy_table_names(self):
+        with unittest.mock.patch.dict(os.environ):
+            os.environ.pop('SESSIONS_TABLE', None)
+            os.environ.pop('PLAYERS_TABLE', None)
+            players = PlayerRepository()
+            sessions = SessionRepository(players)
+
+        self.assertEqual(players.table.name, 'players')
+        self.assertEqual(sessions.table.name, 'sessions')
+
+    def test_reads_table_names_from_the_environment(self):
+        env = {'SESSIONS_TABLE': 'word-chain-dev-sessions',
+               'PLAYERS_TABLE': 'word-chain-dev-players'}
+        with unittest.mock.patch.dict(os.environ, env):
+            players = PlayerRepository()
+            sessions = SessionRepository(players)
+
+        self.assertEqual(players.table.name, 'word-chain-dev-players')
+        self.assertEqual(sessions.table.name, 'word-chain-dev-sessions')
 
 
 if __name__ == '__main__':

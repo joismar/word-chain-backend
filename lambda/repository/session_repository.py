@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -30,7 +31,8 @@ class SessionRepository(ISessionRepository):
     def __init__(self, player_repository: IPlayerRepository, table=None) -> None:
         super().__init__()
         self.player_repository = player_repository
-        self.table = table or boto3.resource('dynamodb').Table('sessions')
+        self.table = table or boto3.resource('dynamodb').Table(
+            os.environ.get('SESSIONS_TABLE', 'sessions'))
 
     def get(self, session_id: str) -> Session:
         item = self.table.get_item(Key={'id': session_id}).get('Item')

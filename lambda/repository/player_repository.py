@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List
@@ -29,7 +30,8 @@ def _player_from_item(item) -> Player:
 
 class PlayerRepository(IPlayerRepository):
     def __init__(self, table=None) -> None:
-        self.table = table or boto3.resource('dynamodb').Table('players')
+        self.table = table or boto3.resource('dynamodb').Table(
+            os.environ.get('PLAYERS_TABLE', 'players'))
 
     def get(self, player_id: str) -> Player:
         item = self.table.get_item(Key={'id': player_id}).get('Item')
