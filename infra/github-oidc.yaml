@@ -130,6 +130,12 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # With a service role, CloudFormation expands the SAM transform
+              # as this role, not as the caller.
+              - Sid: SamTransform
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31
               - Sid: Tables
                 Effect: Allow
                 Action: dynamodb:*
